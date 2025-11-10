@@ -3,7 +3,7 @@ module github.com/aykhans/dodo
 go 1.25
 
 require (
-	github.com/brianvoe/gofakeit/v7 v7.3.0
+	github.com/brianvoe/gofakeit/v7 v7.9.0
 	github.com/jedib0t/go-pretty/v6 v6.6.8
 	github.com/valyala/fasthttp v1.65.0
 	gopkg.in/yaml.v3 v3.0.1
