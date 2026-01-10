@@ -1,53 +1,72 @@
 # https://taskfile.dev
-
 version: "3"
 
 vars:
-    PLATFORMS:
-        - os: darwin
-          archs: [amd64, arm64]
-        - os: freebsd
-          archs: [386, amd64, arm]
-        - os: linux
-          archs: [386, amd64, arm, arm64]
-        - os: netbsd
-          archs: [386, amd64, arm]
-        - os: openbsd
-          archs: [386, amd64, arm, arm64]
-        - os: windows
-          archs: [386, amd64, arm64]
+  BIN_DIR: ./bin
+  GOLANGCI_LINT_VERSION: v2.7.2
+  GOLANGCI: "{{.BIN_DIR}}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}"
 
 tasks:
-    run: go run main.go
+  ftl:
+    desc: Run fmt, tidy, and lint.
+    cmds:
+      - task: fmt
+      - task: tidy
+      - task: lint
 
-    ftl:
-        cmds:
-            - task: fmt
-            - task: tidy
-            - task: lint
+  fmt:
+    desc: Run linters
+    deps:
+      - install-golangci-lint
+    cmds:
+      - "{{.GOLANGCI}} fmt"
 
-    fmt: gofmt -w -d .
+  tidy:
+    desc: Run go mod tidy.
+    cmds:
+      - go mod tidy {{.CLI_ARGS}}
 
-    tidy: go mod tidy
+  lint:
+    desc: Run linters
+    deps:
+      - install-golangci-lint
+    cmds:
+      - "{{.GOLANGCI}} run"
 
-    lint: golangci-lint run
+  test:
+    desc: Run Go tests.
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
 
-    build: CGO_ENABLED=0 go build -ldflags "-s -w" -o "dodo"
+  create-bin-dir:
+    desc: Create bin directory.
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
 
-    build-all:
-        silent: true
-        cmds:
-            - rm -rf binaries
-            - |
-                {{ $ext := "" }}
-                {{- range $platform := .PLATFORMS }}
-                    {{- if eq $platform.os "windows" }}
-                        {{ $ext = ".exe" }}
-                    {{- end }}
+  build:
+    desc: Build the application.
+    deps:
+      - create-bin-dir
+    vars:
+      OUTPUT: '{{.OUTPUT | default (printf "%s/sarin" .BIN_DIR)}}'
+    cmds:
+      - rm -f {{.OUTPUT}}
+      - >-
+        CGO_ENABLED=0 GOEXPERIMENT=greenteagc go build
+        -ldflags "-X 'go.aykhans.me/sarin/internal/version.Version=$(git describe --tags --always)'
+        -X 'go.aykhans.me/sarin/internal/version.GitCommit=$(git rev-parse HEAD)'
+        -X 'go.aykhans.me/sarin/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+        -X 'go.aykhans.me/sarin/internal/version.GoVersion=$(go version)'
+        -s -w"
+        -o {{.OUTPUT}} ./cmd/cli/main.go
 
-                    {{- range $arch := $platform.archs }}
-                        echo "Building for {{$platform.os}}/{{$arch}}"
-                        GOOS={{$platform.os}} GOARCH={{$arch}} go build -ldflags "-s -w" -o "./binaries/dodo-{{$platform.os}}-{{$arch}}{{$ext}}"
-                    {{- end }}
-                {{- end }}
-            - echo -e "\033[32m*** Build completed ***\033[0m"
+  install-golangci-lint:
+    desc: Install golangci-lint
+    deps:
+      - create-bin-dir
+    status:
+      - test -f {{.GOLANGCI}}
+    cmds:
+      - rm -f {{.GOLANGCI}}
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b {{.BIN_DIR}} {{.GOLANGCI_LINT_VERSION}}
+      - mv {{.BIN_DIR}}/golangci-lint {{.GOLANGCI}}
