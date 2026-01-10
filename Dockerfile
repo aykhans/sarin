@@ -1,4 +1,4 @@
-ARG GO_VERSION=required
+ARG GO_VERSION=1.25.5
 
 FROM docker.io/library/golang:${GO_VERSION}-alpine AS builder
 
@@ -21,6 +21,9 @@ RUN --mount=type=bind,source=./,target=./ \
     -o /sarin ./cmd/cli/main.go
 
 FROM gcr.io/distroless/static-debian12:latest
+
+ENV TERM=xterm-256color
+ENV COLORTERM=truecolor
 
 WORKDIR /
 

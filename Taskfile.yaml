@@ -70,3 +70,22 @@ tasks:
       - rm -f {{.GOLANGCI}}
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b {{.BIN_DIR}} {{.GOLANGCI_LINT_VERSION}}
       - mv {{.BIN_DIR}}/golangci-lint {{.GOLANGCI}}
+
+  docker-build:
+    desc: Build the Docker image.
+    vars:
+      IMAGE_NAME: '{{.IMAGE_NAME | default "sarin"}}'
+      TAG: '{{.TAG | default "latest"}}'
+      GO_VERSION: '{{.GO_VERSION | default ""}}'
+      VERSION:
+        sh: git describe --tags --always
+      GIT_COMMIT:
+        sh: git rev-parse HEAD
+    cmds:
+      - >-
+        docker build
+        {{if .GO_VERSION}}--build-arg GO_VERSION={{.GO_VERSION}}{{end}}
+        --build-arg VERSION={{.VERSION}}
+        --build-arg GIT_COMMIT={{.GIT_COMMIT}}
+        -t {{.IMAGE_NAME}}:{{.TAG}}
+        .
