@@ -1,0 +1,101 @@
+version: "2"
+
+run:
+  go: "1.25"
+  concurrency: 12
+
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - errcheck
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - nolintlint
+    - prealloc
+    - reassign
+    - staticcheck
+    - unconvert
+    - unused
+    - whitespace
+    - bidichk
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - embeddedstructfieldcheck
+    - errorlint
+    - exptostd
+    - fatcontext
+    - forcetypeassert
+    - funcorder
+    - gocheckcompilerdirectives
+    - gocritic
+    - gomoddirectives
+    - gosec
+    - gosmopolitan
+    - grouper
+    - importas
+    - inamedparam
+    - intrange
+    - loggercheck
+    - mirror
+    - musttag
+    - perfsprint
+    - predeclared
+    - tagalign
+    - tagliatelle
+    - testifylint
+    - thelper
+    - tparallel
+    - unparam
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+
+  settings:
+    staticcheck:
+      checks:
+        - "all"
+        - "-S1002"
+        - "-ST1000"
+    varnamelen:
+      ignore-decls:
+        - w http.ResponseWriter
+        - wg sync.WaitGroup
+        - wg *sync.WaitGroup
+
+  exclusions:
+    rules:
+      - path: _test\.go$
+        linters:
+          - errorlint
+          - forcetypeassert
+          - perfsprint
+          - errcheck
+          - gosec
+
+      - path: _test\.go$
+        linters:
+          - staticcheck
+        text: "SA5011"
+
+formatters:
+  enable:
+    - gofmt
+
+  settings:
+    gofmt:
+      # Simplify code: gofmt with `-s` option.
+      # Default: true
+      simplify: false
+      # Apply the rewrite rules to the source before reformatting.
+      # https://pkg.go.dev/cmd/gofmt
+      # Default: []
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+        - pattern: "a[b:len(a)]"
+          replacement: "a[b:]"
