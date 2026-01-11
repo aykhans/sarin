@@ -76,7 +76,21 @@ config3.yaml > config2.yaml > config4.yaml > config1.yaml
 
 ## URL
 
-Target URL. Must be HTTP or HTTPS.
+Target URL. Must be HTTP or HTTPS. The URL path supports [templating](templating.md), allowing dynamic path generation per request.
+
+> **Note:** Templating is only supported in the URL path. Host and scheme must be static.
+
+**Example with dynamic path:**
+
+```yaml
+url: http://example.com/users/{{ fakeit_UUID }}/profile
+```
+
+**CLI example with dynamic path:**
+
+```sh
+sarin -U "http://example.com/users/{{ fakeit_UUID }}" -r 1000 -c 10
+```
 
 ## Method
 

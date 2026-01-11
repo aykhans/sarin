@@ -180,6 +180,15 @@ func validateTemplateValues(values []string, funcMap template.FuncMap) []types.F
 	return validationErrors
 }
 
+func validateTemplateURLPath(urlPath string, funcMap template.FuncMap) []types.FieldValidationError {
+	if err := validateTemplateString(urlPath, funcMap); err != nil {
+		return []types.FieldValidationError{
+			types.NewFieldValidationError("URL.Path", urlPath, err),
+		}
+	}
+	return nil
+}
+
 func ValidateTemplates(config *Config) []types.FieldValidationError {
 	// Create template function map using the same functions as sarin package
 	randSource := sarin.NewDefaultRandSource()
@@ -189,6 +198,11 @@ func ValidateTemplates(config *Config) []types.FieldValidationError {
 	bodyFuncMap := sarin.NewDefaultBodyTemplateFuncMap(randSource, bodyFuncMapData)
 
 	var allErrors []types.FieldValidationError
+
+	// Validate URL path
+	if config.URL != nil {
+		allErrors = append(allErrors, validateTemplateURLPath(config.URL.Path, funcMap)...)
+	}
 
 	// Validate methods
 	allErrors = append(allErrors, validateTemplateMethods(config.Methods, funcMap)...)
