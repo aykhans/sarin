@@ -40,6 +40,7 @@ func NewRequestGenerator(
 	localRand := rand.New(randSource)
 	templateFuncMap := NewDefaultTemplateFuncMap(randSource)
 
+	pathGenerator, isPathGeneratorDynamic := createTemplateFunc(requestURL.Path, templateFuncMap)
 	methodGenerator, isMethodGeneratorDynamic := NewMethodGeneratorFunc(localRand, methods, templateFuncMap)
 	paramsGenerator, isParamsGeneratorDynamic := NewParamsGeneratorFunc(localRand, params, templateFuncMap)
 	headersGenerator, isHeadersGeneratorDynamic := NewHeadersGeneratorFunc(localRand, headers, templateFuncMap)
@@ -51,35 +52,45 @@ func NewRequestGenerator(
 
 	valuesGenerator := NewValuesGeneratorFunc(values, templateFuncMap)
 
+	var (
+		data valuesData
+		path string
+		err  error
+	)
 	return func(req *fasthttp.Request) error {
-			req.SetRequestURI(requestURL.Path)
 			req.Header.SetHost(requestURL.Host)
 
-			data, err := valuesGenerator()
+			data, err = valuesGenerator()
 			if err != nil {
 				return err
 			}
 
-			if err := methodGenerator(req, data); err != nil {
+			path, err = pathGenerator(data)
+			if err != nil {
+				return err
+			}
+			req.SetRequestURI(path)
+
+			if err = methodGenerator(req, data); err != nil {
 				return err
 			}
 
 			bodyTemplateFuncMapData.ClearFormDataContenType()
-			if err := bodyGenerator(req, data); err != nil {
+			if err = bodyGenerator(req, data); err != nil {
 				return err
 			}
 
-			if err := headersGenerator(req, data); err != nil {
+			if err = headersGenerator(req, data); err != nil {
 				return err
 			}
 			if bodyTemplateFuncMapData.GetFormDataContenType() != "" {
 				req.Header.Add("Content-Type", bodyTemplateFuncMapData.GetFormDataContenType())
 			}
 
-			if err := paramsGenerator(req, data); err != nil {
+			if err = paramsGenerator(req, data); err != nil {
 				return err
 			}
-			if err := cookiesGenerator(req, data); err != nil {
+			if err = cookiesGenerator(req, data); err != nil {
 				return err
 			}
 
@@ -87,7 +98,8 @@ func NewRequestGenerator(
 				req.URI().SetScheme("https")
 			}
 			return nil
-		}, isMethodGeneratorDynamic ||
+		}, isPathGeneratorDynamic ||
+			isMethodGeneratorDynamic ||
 			isParamsGeneratorDynamic ||
 			isHeadersGeneratorDynamic ||
 			isCookiesGeneratorDynamic ||

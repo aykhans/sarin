@@ -6,8 +6,8 @@ This guide provides practical examples for common Sarin use cases.
 
 - [Basic Usage](#basic-usage)
 - [Request-Based vs Duration-Based Tests](#request-based-vs-duration-based-tests)
-- [Dynamic Requests with Templating](#dynamic-requests-with-templating)
 - [Headers, Cookies, and Parameters](#headers-cookies-and-parameters)
+- [Dynamic Requests with Templating](#dynamic-requests-with-templating)
 - [Request Bodies](#request-bodies)
 - [Using Proxies](#using-proxies)
 - [Output Formats](#output-formats)
@@ -107,104 +107,6 @@ concurrency: 100
 ```
 
 </details>
-
-## Dynamic Requests with Templating
-
-Generate a random User-Agent for each request:
-
-```sh
-sarin -U http://example.com -r 1000 -c 10 \
-  -H "User-Agent: {{ fakeit_UserAgent }}"
-```
-
-<details>
-<summary>YAML equivalent</summary>
-
-```yaml
-url: http://example.com
-requests: 1000
-concurrency: 10
-headers:
-    User-Agent: "{{ fakeit_UserAgent }}"
-```
-
-</details>
-
-Send requests with random user data:
-
-```sh
-sarin -U http://example.com/api/users -r 1000 -c 10 \
-  -M POST \
-  -H "Content-Type: application/json" \
-  -B '{"name": "{{ fakeit_Name }}", "email": "{{ fakeit_Email }}"}'
-```
-
-<details>
-<summary>YAML equivalent</summary>
-
-```yaml
-url: http://example.com/api/users
-requests: 1000
-concurrency: 10
-method: POST
-headers:
-    Content-Type: application/json
-body: '{"name": "{{ fakeit_Name }}", "email": "{{ fakeit_Email }}"}'
-```
-
-</details>
-
-Use values to share generated data across headers and body:
-
-```sh
-sarin -U http://example.com/api/users -r 1000 -c 10 \
-  -M POST \
-  -V "ID={{ fakeit_UUID }}" \
-  -H "X-Request-ID: {{ .Values.ID }}" \
-  -B '{"id": "{{ .Values.ID }}", "name": "{{ fakeit_Name }}"}'
-```
-
-<details>
-<summary>YAML equivalent</summary>
-
-```yaml
-url: http://example.com/api/users
-requests: 1000
-concurrency: 10
-method: POST
-values: "ID={{ fakeit_UUID }}"
-headers:
-    X-Request-ID: "{{ .Values.ID }}"
-body: '{"id": "{{ .Values.ID }}", "name": "{{ fakeit_Name }}"}'
-```
-
-</details>
-
-Generate random IPs and timestamps:
-
-```sh
-sarin -U http://example.com/api/logs -r 500 -c 20 \
-  -M POST \
-  -H "Content-Type: application/json" \
-  -B '{"ip": "{{ fakeit_IPv4Address }}", "timestamp": "{{ fakeit_Date }}", "action": "{{ fakeit_HackerVerb }}"}'
-```
-
-<details>
-<summary>YAML equivalent</summary>
-
-```yaml
-url: http://example.com/api/logs
-requests: 500
-concurrency: 20
-method: POST
-headers:
-    Content-Type: application/json
-body: '{"ip": "{{ fakeit_IPv4Address }}", "timestamp": "{{ fakeit_Date }}", "action": "{{ fakeit_HackerVerb }}"}'
-```
-
-</details>
-
-> For the complete list of 320+ template functions, see the **[Templating Guide](templating.md)**.
 
 ## Headers, Cookies, and Parameters
 
@@ -322,6 +224,140 @@ cookies:
 ```
 
 </details>
+
+## Dynamic Requests with Templating
+
+**Dynamic URL paths:**
+
+Test different resource endpoints with random IDs:
+
+```sh
+sarin -U "http://example.com/users/{{ fakeit_UUID }}/profile" -r 1000 -c 10
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/users/{{ fakeit_UUID }}/profile
+requests: 1000
+concurrency: 10
+```
+
+</details>
+
+Test with random numeric IDs:
+
+```sh
+sarin -U "http://example.com/products/{{ fakeit_Number 1 10000 }}" -r 1000 -c 10
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/products/{{ fakeit_Number 1 10000 }}
+requests: 1000
+concurrency: 10
+```
+
+</details>
+
+**Generate a random User-Agent for each request:**
+
+```sh
+sarin -U http://example.com -r 1000 -c 10 \
+  -H "User-Agent: {{ fakeit_UserAgent }}"
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com
+requests: 1000
+concurrency: 10
+headers:
+    User-Agent: "{{ fakeit_UserAgent }}"
+```
+
+</details>
+
+Send requests with random user data:
+
+```sh
+sarin -U http://example.com/api/users -r 1000 -c 10 \
+  -M POST \
+  -H "Content-Type: application/json" \
+  -B '{"name": "{{ fakeit_Name }}", "email": "{{ fakeit_Email }}"}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/users
+requests: 1000
+concurrency: 10
+method: POST
+headers:
+    Content-Type: application/json
+body: '{"name": "{{ fakeit_Name }}", "email": "{{ fakeit_Email }}"}'
+```
+
+</details>
+
+Use values to share generated data across headers and body:
+
+```sh
+sarin -U http://example.com/api/users -r 1000 -c 10 \
+  -M POST \
+  -V "ID={{ fakeit_UUID }}" \
+  -H "X-Request-ID: {{ .Values.ID }}" \
+  -B '{"id": "{{ .Values.ID }}", "name": "{{ fakeit_Name }}"}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/users
+requests: 1000
+concurrency: 10
+method: POST
+values: "ID={{ fakeit_UUID }}"
+headers:
+    X-Request-ID: "{{ .Values.ID }}"
+body: '{"id": "{{ .Values.ID }}", "name": "{{ fakeit_Name }}"}'
+```
+
+</details>
+
+Generate random IPs and timestamps:
+
+```sh
+sarin -U http://example.com/api/logs -r 500 -c 20 \
+  -M POST \
+  -H "Content-Type: application/json" \
+  -B '{"ip": "{{ fakeit_IPv4Address }}", "timestamp": "{{ fakeit_Date }}", "action": "{{ fakeit_HackerVerb }}"}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/logs
+requests: 500
+concurrency: 20
+method: POST
+headers:
+    Content-Type: application/json
+body: '{"ip": "{{ fakeit_IPv4Address }}", "timestamp": "{{ fakeit_Date }}", "action": "{{ fakeit_HackerVerb }}"}'
+```
+
+</details>
+
+> For the complete list of 320+ template functions, see the **[Templating Guide](templating.md)**.
 
 ## Request Bodies
 

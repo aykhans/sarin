@@ -1,6 +1,8 @@
 # Templating
 
-Sarin supports Go templates in methods, bodies, headers, params, cookies, and values.
+Sarin supports Go templates in URL paths, methods, bodies, headers, params, cookies, and values.
+
+> **Note:** Templating in URL host and scheme is not supported. Only the path portion of the URL can contain templates.
 
 ## Table of Contents
 
