@@ -175,8 +175,8 @@ url: http://example.com/search
 requests: 1000
 concurrency: 10
 params:
-    query: test
-    limit: "10"
+    query: "test"
+    limit: 10
 ```
 
 </details>
@@ -198,7 +198,7 @@ requests: 1000
 concurrency: 10
 params:
     id: "{{ fakeit_IntRange 1 1000 }}"
-    fields: name,email
+    fields: "name,email"
 ```
 
 </details>

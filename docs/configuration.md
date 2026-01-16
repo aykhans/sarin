@@ -5,7 +5,7 @@ Sarin supports environment variables, CLI flags, and YAML files. However, they a
 When the same option is specified in multiple sources, the following priority order applies:
 
 ```
-YAML (Highest) > CLI Flags > Environment Variables (Lowest)
+CLI Flags (Highest) > YAML > Environment Variables (Lowest)
 ```
 
 Use `-s` or `--show-config` to see the final merged configuration before sending requests.
@@ -14,8 +14,8 @@ Use `-s` or `--show-config` to see the final merged configuration before sending
 
 > **Note:** For CLI flags with `string / []string` type, the flag can be used once with a single value or multiple times to provide multiple values.
 
-| Name                        | YAML                                | CLI                                           | ENV                              | Default | Description                  |
-| --------------------------- | ----------------------------------- | --------------------------------------------- | -------------------------------- | ------- | ---------------------------- |
+| Name                        | YAML                                | CLI                                          | ENV                              | Default | Description                  |
+| --------------------------- | ----------------------------------- | -------------------------------------------- | -------------------------------- | ------- | ---------------------------- |
 | [Help](#help)               | -                                   | `-help` / `-h`                               | -                                | -       | Show help message            |
 | [Version](#version)         | -                                   | `-version` / `-v`                            | -                                | -       | Show version and build info  |
 | [Show Config](#show-config) | `showConfig`<br>(boolean)           | `-show-config` / `-s`<br>(boolean)           | `SARIN_SHOW_CONFIG`<br>(boolean) | `false` | Show merged configuration    |
@@ -43,36 +43,65 @@ Use `-s` or `--show-config` to see the final merged configuration before sending
 
 Show help message.
 
+```sh
+sarin -help
+```
+
 ## Version
 
 Show version and build information.
+
+```sh
+sarin -version
+```
 
 ## Show Config
 
 Show the final merged configuration before sending requests.
 
+```sh
+sarin -show-config
+```
+
 ## Config File
 
 Path to configuration file(s). Supports local paths and remote URLs.
 
-If multiple config files are specified, they are merged in order. Later files override earlier ones.
+**Priority Rules:**
+
+1. **CLI flags** (`-f`) have highest priority, processed left to right (rightmost wins)
+2. **Included files** (via `configFile` property) are processed with lower priority than their parent
+3. **Environment variable** (`SARIN_CONFIG_FILE`) has lowest priority
 
 **Example:**
 
 ```yaml
 # config2.yaml
 configFile: /config4.yaml
+url: http://from-config2.com
 ```
 
 ```sh
 SARIN_CONFIG_FILE=/config1.yaml sarin -f /config2.yaml -f https://example.com/config3.yaml
 ```
 
-In this example, all 4 config files are read and merged with the following priority:
+**Resolution order (lowest to highest priority):**
 
-```
-config3.yaml > config2.yaml > config4.yaml > config1.yaml
-```
+| Source                   | File         | Priority |
+| ------------------------ | ------------ | -------- |
+| ENV (SARIN_CONFIG_FILE)  | config1.yaml | Lowest   |
+| Included by config2.yaml | config4.yaml | ↑        |
+| CLI -f (first)           | config2.yaml | ↑        |
+| CLI -f (second)          | config3.yaml | Highest  |
+
+**Why this order?**
+
+- `config1.yaml` comes from ENV → lowest priority
+- `config2.yaml` comes from CLI → higher than ENV
+- `config4.yaml` is included BY `config2.yaml` → inherits position below its parent
+- `config3.yaml` comes from CLI after `config2.yaml` → highest priority
+
+If all four files define `url`, the value from `config3.yaml` wins.
 
 ## URL
 
@@ -94,7 +123,7 @@ sarin -U "http://example.com/users/{{ fakeit_UUID }}" -r 1000 -c 10
 
 ## Method
 
-HTTP method(s). If multiple values are provided, Sarin cycles through them randomly for each request. Supports [templating](templating.md).
+HTTP method(s). If multiple values are provided, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
 
 **YAML example:**
 
@@ -167,7 +196,7 @@ Skip TLS certificate verification.
 
 ## Body
 
-Request body. If multiple values are provided, Sarin cycles through them randomly for each request. Supports [templating](templating.md).
+Request body. If multiple values are provided, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
 
 **YAML example:**
 
@@ -196,7 +225,7 @@ SARIN_BODY='{"product": "car"}'
 
 ## Params
 
-URL query parameters. If multiple values are provided for a key, Sarin cycles through them randomly for each request. Supports [templating](templating.md).
+URL query parameters. If multiple values are provided for a key, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
 
 **YAML example:**
 
@@ -226,7 +255,7 @@ SARIN_PARAM="key1=value1"
 
 ## Headers
 
-HTTP headers. If multiple values are provided for a key, Sarin cycles through them randomly for each request. Supports [templating](templating.md).
+HTTP headers. If multiple values are provided for a key, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
 
 **YAML example:**
 
@@ -256,7 +285,7 @@ SARIN_HEADER="key1: value1"
 
 ## Cookies
 
-HTTP cookies. If multiple values are provided for a key, Sarin cycles through them randomly for each request. Supports [templating](templating.md).
+HTTP cookies. If multiple values are provided for a key, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
 
 **YAML example:**
 
@@ -286,7 +315,7 @@ SARIN_COOKIE="key1=value1"
 
 ## Proxy
 
-Proxy URL(s). If multiple values are provided, Sarin cycles through them randomly for each request.
+Proxy URL(s). If multiple values are provided, Sarin cycles through them in order, starting from a random index for each request.
 
 Supported protocols: `http`, `https`, `socks5`, `socks5h`
 
