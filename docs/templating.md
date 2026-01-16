@@ -532,7 +532,7 @@ These functions are powered by [gofakeit](https://github.com/brianvoe/gofakeit) 
 | Function                              | Description                     | Example                                                         |
 | ------------------------------------- | ------------------------------- | --------------------------------------------------------------- |
 | `fakeit_Digit`                        | Single random digit             | `"0"`                                                           |
-| `fakeit_DigitN(n uint)`               | Generate `n` random digits      | `{{ fakeit_DigitN 5 }}` → `"0136459948"`                        |
+| `fakeit_DigitN(n uint)`               | Generate `n` random digits      | `{{ fakeit_DigitN 5 }}` → `"71364"`                             |
 | `fakeit_Letter`                       | Single random letter            | `"g"`                                                           |
 | `fakeit_LetterN(n uint)`              | Generate `n` random letters     | `{{ fakeit_LetterN 10 }}` → `"gbRMaRxHki"`                      |
 | `fakeit_Lexify(pattern string)`       | Replace `?` with random letters | `{{ fakeit_Lexify "?????@??????.com" }}` → `"billy@mister.com"` |

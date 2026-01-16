@@ -93,7 +93,7 @@ For more usage examples, see the **[Examples Guide](docs/examples.md)**.
 Sarin supports environment variables, CLI flags, and YAML files. When the same option is specified in multiple sources, the following priority order applies:
 
 ```
-YAML (Highest) > CLI Flags > Environment Variables (Lowest)
+CLI Flags (Highest) > YAML > Environment Variables (Lowest)
 ```
 
 For detailed documentation on all configuration options (URL, method, timeout, concurrency, headers, cookies, proxy, etc.), see the **[Configuration Guide](docs/configuration.md)**.
@@ -106,9 +106,9 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
 
 ```sh
 sarin -U "http://example.com/users/{{ fakeit_UUID }}" -r 1000 -c 10 \
-  -V "RequestID={{ fakeit_UUID }}" \
-  -H "X-Request-ID: {{ .Values.RequestID }}" \
-  -B '{"request_id": "{{ .Values.RequestID }}"}'
+  -V "REQUEST_ID={{ fakeit_UUID }}" \
+  -H "X-Request-ID: {{ .Values.REQUEST_ID }}" \
+  -B '{"request_id": "{{ .Values.REQUEST_ID }}"}'
 ```
 
 For the complete templating guide and functions reference, see the **[Templating Guide](docs/templating.md)**.
