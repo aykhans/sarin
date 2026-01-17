@@ -521,7 +521,7 @@ body: '{{ body_FormData "title" "My Document" "document" "@/path/to/file.pdf" }}
 
 </details>
 
-**Multiple file uploads:**
+**Multiple file uploads (same field name):**
 
 ```sh
 sarin -U http://example.com/api/upload -r 100 -c 10 \
@@ -538,10 +538,36 @@ requests: 100
 concurrency: 10
 method: POST
 body: |
-  {{ body_FormData
-     "files" "@/path/to/file1.pdf"
-     "files" "@/path/to/file2.pdf"
-  }}
+    {{ body_FormData
+       "files" "@/path/to/file1.pdf"
+       "files" "@/path/to/file2.pdf"
+    }}
+```
+
+</details>
+
+**Multiple file uploads (different field names):**
+
+```sh
+sarin -U http://example.com/api/upload -r 100 -c 10 \
+  -M POST \
+  -B '{{ body_FormData "avatar" "@/path/to/photo.jpg" "resume" "@/path/to/cv.pdf" "cover_letter" "@/path/to/letter.docx" }}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/upload
+requests: 100
+concurrency: 10
+method: POST
+body: |
+    {{ body_FormData
+       "avatar" "@/path/to/photo.jpg"
+       "resume" "@/path/to/cv.pdf"
+       "cover_letter" "@/path/to/letter.docx"
+    }}
 ```
 
 </details>
@@ -569,7 +595,7 @@ body: '{{ body_FormData "image" "@https://example.com/photo.jpg" }}'
 
 > **Note:** Files (local and remote) are cached in memory after the first read, so they are not re-read for every request.
 
-**Base64 encoded file in JSON body:**
+**Base64 encoded file in JSON body (local file):**
 
 ```sh
 sarin -U http://example.com/api/upload -r 100 -c 10 \
@@ -587,8 +613,32 @@ requests: 100
 concurrency: 10
 method: POST
 headers:
-  Content-Type: application/json
+    Content-Type: application/json
 body: '{"file": "{{ file_Base64 "/path/to/file.pdf" }}", "filename": "document.pdf"}'
+```
+
+</details>
+
+**Base64 encoded file in JSON body (remote URL):**
+
+```sh
+sarin -U http://example.com/api/upload -r 100 -c 10 \
+  -M POST \
+  -H "Content-Type: application/json" \
+  -B '{"image": "{{ file_Base64 "https://example.com/photo.jpg" }}", "filename": "photo.jpg"}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/upload
+requests: 100
+concurrency: 10
+method: POST
+headers:
+    Content-Type: application/json
+body: '{"image": "{{ file_Base64 "https://example.com/photo.jpg" }}", "filename": "photo.jpg"}'
 ```
 
 </details>

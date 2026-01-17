@@ -11,6 +11,7 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
     - [String Functions](#string-functions)
     - [Collection Functions](#collection-functions)
     - [Body Functions](#body-functions)
+    - [File Functions](#file-functions)
 - [Fake Data Functions](#fake-data-functions)
     - [File](#file)
     - [ID](#id)
@@ -110,8 +111,8 @@ sarin -U http://example.com/users \
 
 ### Body Functions
 
-| Function                       | Description                                                              | Example                                          |
-| ------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| Function                         | Description                                                                                                                                                                                                 | Example                                                             |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `body_FormData(pairs ...string)` | Create multipart form data from key-value pairs. Automatically sets the `Content-Type` header. Values starting with `@` are treated as file references (local path or URL). Use `@@` to escape literal `@`. | `{{ body_FormData "field1" "value1" "file" "@/path/to/file.pdf" }}` |
 
 **`body_FormData` Details:**
@@ -150,8 +151,8 @@ body: '{{ body_FormData "twitter" "@@username" }}'
 
 ### File Functions
 
-| Function                    | Description                                                                 | Example                                    |
-| --------------------------- | --------------------------------------------------------------------------- | ------------------------------------------ |
+| Function                     | Description                                                                                               | Example                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------- |
 | `file_Base64(source string)` | Read a file (local path or URL) and return its Base64 encoded content. Files are cached after first read. | `{{ file_Base64 "/path/to/file.pdf" }}` |
 
 **`file_Base64` Details:**
