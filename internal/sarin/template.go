@@ -2,6 +2,8 @@ package sarin
 
 import (
 	"bytes"
+	"encoding/base64"
+	"errors"
 	"math/rand/v2"
 	"mime/multipart"
 	"strings"
@@ -12,7 +14,7 @@ import (
 	"github.com/brianvoe/gofakeit/v7"
 )
 
-func NewDefaultTemplateFuncMap(randSource rand.Source) template.FuncMap {
+func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) template.FuncMap {
 	fakeit := gofakeit.NewFaker(randSource, false)
 
 	return template.FuncMap{
@@ -81,6 +83,21 @@ func NewDefaultTemplateFuncMap(randSource rand.Source) template.FuncMap {
 		"slice_Str":  func(values ...string) []string { return values },
 		"slice_Int":  func(values ...int) []int { return values },
 		"slice_Uint": func(values ...uint) []uint { return values },
+
+		// File
+		// file_Base64 reads a file (local or remote URL) and returns its Base64 encoded content.
+		// Usage: {{ file_Base64 "/path/to/file.pdf" }}
+		//        {{ file_Base64 "https://example.com/image.png" }}
+		"file_Base64": func(source string) (string, error) {
+			if fileCache == nil {
+				return "", errors.New("file cache is not initialized")
+			}
+			cached, err := fileCache.GetOrLoad(source)
+			if err != nil {
+				return "", err
+			}
+			return base64.StdEncoding.EncodeToString(cached.Content), nil
+		},
 
 		// Fakeit / File
 		// "fakeit_CSV": fakeit.CSV(nil),
@@ -542,21 +559,75 @@ func (data *BodyTemplateFuncMapData) ClearFormDataContenType() {
 	data.formDataContenType = ""
 }
 
-func NewDefaultBodyTemplateFuncMap(randSource rand.Source, data *BodyTemplateFuncMapData) template.FuncMap {
-	funcMap := NewDefaultTemplateFuncMap(randSource)
+func NewDefaultBodyTemplateFuncMap(
+	randSource rand.Source,
+	data *BodyTemplateFuncMapData,
+	fileCache *FileCache,
+) template.FuncMap {
+	funcMap := NewDefaultTemplateFuncMap(randSource, fileCache)
 
 	if data != nil {
-		funcMap["body_FormData"] = func(kv map[string]string) string {
+		// body_FormData creates a multipart/form-data body from key-value pairs.
+		// Usage: {{ body_FormData "field1" "value1" "field2" "value2" ... }}
+		//
+		// Values starting with "@" are treated as file references:
+		//   - "@/path/to/file.txt" - local file
+		//   - "@http://example.com/file" - remote file via HTTP
+		//   - "@https://example.com/file" - remote file via HTTPS
+		//
+		// To send a literal string starting with "@", escape it with "@@":
+		//   - "@@literal" sends "@literal"
+		//
+		// Example with mixed text and files:
+		//   {{ body_FormData "name" "John" "avatar" "@/path/to/photo.jpg" "doc" "@https://example.com/file.pdf" }}
+		funcMap["body_FormData"] = func(pairs ...string) (string, error) {
+			if len(pairs)%2 != 0 {
+				return "", errors.New("body_FormData requires an even number of arguments (key-value pairs)")
+			}
+
 			var multipartData bytes.Buffer
 			writer := multipart.NewWriter(&multipartData)
 			data.formDataContenType = writer.FormDataContentType()
 
-			for k, v := range kv {
-				_ = writer.WriteField(k, v)
+			for i := 0; i < len(pairs); i += 2 {
+				key := pairs[i]
+				val := pairs[i+1]
+
+				switch {
+				case strings.HasPrefix(val, "@@"):
+					// Escaped @ - send as literal string without first @
+					if err := writer.WriteField(key, val[1:]); err != nil {
+						return "", err
+					}
+				case strings.HasPrefix(val, "@"):
+					// File (local path or remote URL)
+					if fileCache == nil {
+						return "", errors.New("file cache is not initialized")
+					}
+					source := val[1:]
+					cached, err := fileCache.GetOrLoad(source)
+					if err != nil {
+						return "", err
+					}
+					part, err := writer.CreateFormFile(key, cached.Filename)
+					if err != nil {
+						return "", err
+					}
+					if _, err := part.Write(cached.Content); err != nil {
+						return "", err
+					}
+				default:
+					// Regular text field
+					if err := writer.WriteField(key, val); err != nil {
+						return "", err
+					}
+				}
 			}
 
-			_ = writer.Close()
-			return multipartData.String()
+			if err := writer.Close(); err != nil {
+				return "", err
+			}
+			return multipartData.String(), nil
 		}
 	}
 

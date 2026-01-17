@@ -51,6 +51,7 @@ type sarin struct {
 
 	hostClients []*fasthttp.HostClient
 	responses   *SarinResponseData
+	fileCache   *FileCache
 }
 
 // NewSarin creates a new sarin instance for load testing.
@@ -101,6 +102,7 @@ func NewSarin(
 		collectStats:   collectStats,
 		dryRun:         dryRun,
 		hostClients:    hostClients,
+		fileCache:      NewFileCache(time.Second * 10),
 	}
 
 	if collectStats {
@@ -191,7 +193,7 @@ func (q sarin) Worker(
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
-	requestGenerator, isDynamic := NewRequestGenerator(q.methods, q.requestURL, q.params, q.headers, q.cookies, q.bodies, q.values)
+	requestGenerator, isDynamic := NewRequestGenerator(q.methods, q.requestURL, q.params, q.headers, q.cookies, q.bodies, q.values, q.fileCache)
 
 	if q.dryRun {
 		switch {

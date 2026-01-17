@@ -9,6 +9,7 @@ This guide provides practical examples for common Sarin use cases.
 - [Headers, Cookies, and Parameters](#headers-cookies-and-parameters)
 - [Dynamic Requests with Templating](#dynamic-requests-with-templating)
 - [Request Bodies](#request-bodies)
+- [File Uploads](#file-uploads)
 - [Using Proxies](#using-proxies)
 - [Output Formats](#output-formats)
 - [Docker Usage](#docker-usage)
@@ -456,7 +457,7 @@ body: |
 ```sh
 sarin -U http://example.com/api/upload -r 1000 -c 10 \
   -M POST \
-  -B '{{ body_FormData (dict_Str "username" "john" "email" "john@example.com") }}'
+  -B '{{ body_FormData "username" "john" "email" "john@example.com" }}'
 ```
 
 <details>
@@ -467,7 +468,7 @@ url: http://example.com/api/upload
 requests: 1000
 concurrency: 10
 method: POST
-body: '{{ body_FormData (dict_Str "username" "john" "email" "john@example.com") }}'
+body: '{{ body_FormData "username" "john" "email" "john@example.com" }}'
 ```
 
 </details>
@@ -477,7 +478,7 @@ body: '{{ body_FormData (dict_Str "username" "john" "email" "john@example.com") 
 ```sh
 sarin -U http://example.com/api/users -r 1000 -c 10 \
   -M POST \
-  -B '{{ body_FormData (dict_Str "name" (fakeit_Name) "email" (fakeit_Email) "phone" (fakeit_Phone)) }}'
+  -B '{{ body_FormData "name" (fakeit_Name) "email" (fakeit_Email) "phone" (fakeit_Phone) }}'
 ```
 
 <details>
@@ -488,12 +489,109 @@ url: http://example.com/api/users
 requests: 1000
 concurrency: 10
 method: POST
-body: '{{ body_FormData (dict_Str "name" (fakeit_Name) "email" (fakeit_Email) "phone" (fakeit_Phone)) }}'
+body: '{{ body_FormData "name" (fakeit_Name) "email" (fakeit_Email) "phone" (fakeit_Phone) }}'
 ```
 
 </details>
 
 > **Note:** `body_FormData` automatically sets the `Content-Type` header to `multipart/form-data` with the appropriate boundary.
+
+## File Uploads
+
+**File upload with multipart form data:**
+
+Upload a local file:
+
+```sh
+sarin -U http://example.com/api/upload -r 100 -c 10 \
+  -M POST \
+  -B '{{ body_FormData "title" "My Document" "document" "@/path/to/file.pdf" }}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/upload
+requests: 100
+concurrency: 10
+method: POST
+body: '{{ body_FormData "title" "My Document" "document" "@/path/to/file.pdf" }}'
+```
+
+</details>
+
+**Multiple file uploads:**
+
+```sh
+sarin -U http://example.com/api/upload -r 100 -c 10 \
+  -M POST \
+  -B '{{ body_FormData "files" "@/path/to/file1.pdf" "files" "@/path/to/file2.pdf" }}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/upload
+requests: 100
+concurrency: 10
+method: POST
+body: |
+  {{ body_FormData
+     "files" "@/path/to/file1.pdf"
+     "files" "@/path/to/file2.pdf"
+  }}
+```
+
+</details>
+
+**File from URL:**
+
+```sh
+sarin -U http://example.com/api/upload -r 100 -c 10 \
+  -M POST \
+  -B '{{ body_FormData "image" "@https://example.com/photo.jpg" }}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/upload
+requests: 100
+concurrency: 10
+method: POST
+body: '{{ body_FormData "image" "@https://example.com/photo.jpg" }}'
+```
+
+</details>
+
+> **Note:** Files (local and remote) are cached in memory after the first read, so they are not re-read for every request.
+
+**Base64 encoded file in JSON body:**
+
+```sh
+sarin -U http://example.com/api/upload -r 100 -c 10 \
+  -M POST \
+  -H "Content-Type: application/json" \
+  -B '{"file": "{{ file_Base64 "/path/to/file.pdf" }}", "filename": "document.pdf"}'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/upload
+requests: 100
+concurrency: 10
+method: POST
+headers:
+  Content-Type: application/json
+body: '{"file": "{{ file_Base64 "/path/to/file.pdf" }}", "filename": "document.pdf"}'
+```
+
+</details>
 
 ## Using Proxies
 

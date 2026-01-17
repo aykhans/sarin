@@ -34,11 +34,12 @@ func NewRequestGenerator(
 	cookies types.Cookies,
 	bodies []string,
 	values []string,
+	fileCache *FileCache,
 ) (RequestGenerator, bool) {
 	randSource := NewDefaultRandSource()
 	//nolint:gosec // G404: Using non-cryptographic rand for load testing, not security
 	localRand := rand.New(randSource)
-	templateFuncMap := NewDefaultTemplateFuncMap(randSource)
+	templateFuncMap := NewDefaultTemplateFuncMap(randSource, fileCache)
 
 	pathGenerator, isPathGeneratorDynamic := createTemplateFunc(requestURL.Path, templateFuncMap)
 	methodGenerator, isMethodGeneratorDynamic := NewMethodGeneratorFunc(localRand, methods, templateFuncMap)
@@ -47,7 +48,7 @@ func NewRequestGenerator(
 	cookiesGenerator, isCookiesGeneratorDynamic := NewCookiesGeneratorFunc(localRand, cookies, templateFuncMap)
 
 	bodyTemplateFuncMapData := &BodyTemplateFuncMapData{}
-	bodyTemplateFuncMap := NewDefaultBodyTemplateFuncMap(randSource, bodyTemplateFuncMapData)
+	bodyTemplateFuncMap := NewDefaultBodyTemplateFuncMap(randSource, bodyTemplateFuncMapData, fileCache)
 	bodyGenerator, isBodyGeneratorDynamic := NewBodyGeneratorFunc(localRand, bodies, bodyTemplateFuncMap)
 
 	valuesGenerator := NewValuesGeneratorFunc(values, templateFuncMap)
