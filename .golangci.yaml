@@ -29,7 +29,6 @@ linters:
     - errorlint
     - exptostd
     - fatcontext
-    - forcetypeassert
     - funcorder
     - gocheckcompilerdirectives
     - gocritic

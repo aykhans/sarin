@@ -11,6 +11,7 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
     - [String Functions](#string-functions)
     - [Collection Functions](#collection-functions)
     - [Body Functions](#body-functions)
+    - [File Functions](#file-functions)
 - [Fake Data Functions](#fake-data-functions)
     - [File](#file)
     - [ID](#id)
@@ -110,9 +111,63 @@ sarin -U http://example.com/users \
 
 ### Body Functions
 
-| Function                                  | Description                                                              | Example                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------- |
-| `body_FormData(fields map[string]string)` | Create multipart form data. Automatically sets the `Content-Type` header | `{{ body_FormData (dict_Str "field1" "value1") }}` |
+| Function                         | Description                                                                                                                                                                                                 | Example                                                             |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `body_FormData(pairs ...string)` | Create multipart form data from key-value pairs. Automatically sets the `Content-Type` header. Values starting with `@` are treated as file references (local path or URL). Use `@@` to escape literal `@`. | `{{ body_FormData "field1" "value1" "file" "@/path/to/file.pdf" }}` |
+
+**`body_FormData` Details:**
+
+```yaml
+# Text fields only
+body: '{{ body_FormData "username" "john" "email" "john@example.com" }}'
+
+# Single file upload
+body: '{{ body_FormData "document" "@/path/to/file.pdf" }}'
+
+# File from URL
+body: '{{ body_FormData "image" "@https://example.com/photo.jpg" }}'
+
+# Mixed text fields and files
+body: |
+  {{ body_FormData
+     "title" "My Report"
+     "author" "John Doe"
+     "cover" "@/path/to/cover.jpg"
+     "document" "@/path/to/report.pdf"
+  }}
+
+# Multiple files with same field name
+body: |
+  {{ body_FormData
+     "files" "@/path/to/file1.pdf"
+     "files" "@/path/to/file2.pdf"
+  }}
+
+# Escape @ for literal value (sends "@username")
+body: '{{ body_FormData "twitter" "@@username" }}'
+```
+
+> **Note:** Files are cached in memory after the first read. Subsequent requests reuse the cached content, avoiding repeated disk/network I/O.
+
+### File Functions
+
+| Function                     | Description                                                                                               | Example                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `file_Base64(source string)` | Read a file (local path or URL) and return its Base64 encoded content. Files are cached after first read. | `{{ file_Base64 "/path/to/file.pdf" }}` |
+
+**`file_Base64` Details:**
+
+```yaml
+# Local file as Base64 in JSON body
+body: '{"file": "{{ file_Base64 "/path/to/document.pdf" }}", "filename": "document.pdf"}'
+
+# Remote file as Base64
+body: '{"image": "{{ file_Base64 "https://example.com/photo.jpg" }}"}'
+
+# Combined with values for reuse
+values: "FILE_DATA={{ file_Base64 \"/path/to/file.bin\" }}"
+body: '{"data": "{{ .Values.FILE_DATA }}"}'
+```
 
 ## Fake Data Functions
 
