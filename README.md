@@ -2,6 +2,10 @@
 
 ## Sarin is a high-performance HTTP load testing tool built with Go and fasthttp.
 
+[![Go Reference](https://pkg.go.dev/badge/go.aykhans.me/sarin.svg)](https://pkg.go.dev/go.aykhans.me/sarin)
+[![Go Report Card](https://goreportcard.com/badge/go.aykhans.me/sarin)](https://goreportcard.com/report/go.aykhans.me/sarin)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 </div>
 
 ![Demo](docs/static/demo.gif)
