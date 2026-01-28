@@ -202,6 +202,8 @@ type configYAML struct {
 	Bodies       stringOrSliceField `yaml:"body"`
 	Proxies      stringOrSliceField `yaml:"proxy"`
 	Values       stringOrSliceField `yaml:"values"`
+	Lua          stringOrSliceField `yaml:"lua"`
+	Js           stringOrSliceField `yaml:"js"`
 }
 
 // ParseYAML parses YAML config file arguments into a Config object.
@@ -246,6 +248,8 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 	}
 	config.Bodies = append(config.Bodies, parsedData.Bodies...)
 	config.Values = append(config.Values, parsedData.Values...)
+	config.Lua = append(config.Lua, parsedData.Lua...)
+	config.Js = append(config.Js, parsedData.Js...)
 
 	if len(parsedData.ConfigFiles) > 0 {
 		for _, configFile := range parsedData.ConfigFiles {

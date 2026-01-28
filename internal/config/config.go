@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/term"
+	"go.aykhans.me/sarin/internal/script"
 	"go.aykhans.me/sarin/internal/types"
 	"go.aykhans.me/sarin/internal/version"
 	"go.aykhans.me/utils/common"
@@ -87,6 +89,8 @@ type Config struct {
 	Bodies      []string           `yaml:"bodies,omitempty"`
 	Proxies     types.Proxies      `yaml:"proxies,omitempty"`
 	Values      []string           `yaml:"values,omitempty"`
+	Lua         []string           `yaml:"lua,omitempty"`
+	Js          []string           `yaml:"js,omitempty"`
 }
 
 func NewConfig() *Config {
@@ -219,6 +223,8 @@ func (config Config) MarshalYAML() (any, error) {
 	}
 
 	addStringSlice(content, "values", config.Values, false)
+	addStringSlice(content, "lua", config.Lua, false)
+	addStringSlice(content, "js", config.Js, false)
 
 	return root, nil
 }
@@ -322,6 +328,12 @@ func (config *Config) Merge(newConfig *Config) {
 	}
 	if len(newConfig.Values) != 0 {
 		config.Values = append(config.Values, newConfig.Values...)
+	}
+	if len(newConfig.Lua) != 0 {
+		config.Lua = append(config.Lua, newConfig.Lua...)
+	}
+	if len(newConfig.Js) != 0 {
+		config.Js = append(config.Js, newConfig.Js...)
 	}
 }
 
@@ -465,6 +477,44 @@ func (config Config) Validate() error {
 		}
 	}
 
+	// Create a context with timeout for script validation (loading from URLs)
+	scriptCtx, scriptCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer scriptCancel()
+
+	for i, scriptSrc := range config.Lua {
+		if err := validateScriptSource(scriptSrc); err != nil {
+			validationErrors = append(
+				validationErrors,
+				types.NewFieldValidationError(fmt.Sprintf("Lua[%d]", i), scriptSrc, err),
+			)
+			continue
+		}
+		// Validate script syntax
+		if err := script.ValidateScript(scriptCtx, scriptSrc, script.EngineTypeLua); err != nil {
+			validationErrors = append(
+				validationErrors,
+				types.NewFieldValidationError(fmt.Sprintf("Lua[%d]", i), scriptSrc, err),
+			)
+		}
+	}
+
+	for i, scriptSrc := range config.Js {
+		if err := validateScriptSource(scriptSrc); err != nil {
+			validationErrors = append(
+				validationErrors,
+				types.NewFieldValidationError(fmt.Sprintf("Js[%d]", i), scriptSrc, err),
+			)
+			continue
+		}
+		// Validate script syntax
+		if err := script.ValidateScript(scriptCtx, scriptSrc, script.EngineTypeJavaScript); err != nil {
+			validationErrors = append(
+				validationErrors,
+				types.NewFieldValidationError(fmt.Sprintf("Js[%d]", i), scriptSrc, err),
+			)
+		}
+	}
+
 	templateErrors := ValidateTemplates(&config)
 	validationErrors = append(validationErrors, templateErrors...)
 
@@ -580,6 +630,51 @@ func parseConfigFile(configFile types.ConfigFile, maxDepth int) (*Config, error)
 	}
 
 	return fileConfig, nil
+}
+
+// validateScriptSource validates a script source string.
+// Scripts can be:
+//   - Inline script: any string not starting with "@"
+//   - Escaped "@": strings starting with "@@" (literal "@" at start)
+//   - File reference: "@/path/to/file" or "@./relative/path"
+//   - URL reference: "@http://..." or "@https://..."
+func validateScriptSource(script string) error {
+	// Empty script is invalid
+	if script == "" {
+		return errors.New("script cannot be empty")
+	}
+
+	// Not a file/URL reference - it's an inline script
+	if !strings.HasPrefix(script, "@") {
+		return nil
+	}
+
+	// Escaped @ - it's an inline script starting with literal @
+	if strings.HasPrefix(script, "@@") {
+		return nil
+	}
+
+	// It's a file or URL reference - validate the source
+	source := script[1:] // Remove the @ prefix
+
+	if source == "" {
+		return errors.New("script source cannot be empty after @")
+	}
+
+	// Check if it's a URL
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		parsedURL, err := url.Parse(source)
+		if err != nil {
+			return fmt.Errorf("invalid URL: %w", err)
+		}
+		if parsedURL.Host == "" {
+			return errors.New("URL must have a host")
+		}
+		return nil
+	}
+
+	// It's a file path - basic validation (not empty, checked above)
+	return nil
 }
 
 func printParseErrors(parserName string, errors ...types.FieldParseError) {

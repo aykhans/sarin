@@ -53,7 +53,12 @@ func main() {
 		combinedConfig.Cookies, combinedConfig.Bodies, combinedConfig.Proxies, combinedConfig.Values,
 		*combinedConfig.Output != config.ConfigOutputTypeNone,
 		*combinedConfig.DryRun,
+		combinedConfig.Lua, combinedConfig.Js,
 	)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, config.StyleRed.Render("[ERROR] ")+err.Error())
+		os.Exit(1)
+	}
 	_ = utilsErr.MustHandle(err,
 		utilsErr.OnType(func(err types.ProxyDialError) error {
 			fmt.Fprintln(os.Stderr, config.StyleRed.Render("[PROXY] ")+err.Error())

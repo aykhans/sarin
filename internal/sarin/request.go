@@ -11,6 +11,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/valyala/fasthttp"
+	"go.aykhans.me/sarin/internal/script"
 	"go.aykhans.me/sarin/internal/types"
 	utilsSlice "go.aykhans.me/utils/slice"
 )
@@ -26,6 +27,9 @@ type valuesData struct {
 // NewRequestGenerator creates a new RequestGenerator function that generates HTTP requests
 // with the specified configuration. The returned RequestGenerator is NOT safe for concurrent
 // use by multiple goroutines.
+//
+// Note: Scripts must be validated before calling this function (e.g., in NewSarin).
+// The caller is responsible for managing the scriptTransformer lifecycle.
 func NewRequestGenerator(
 	methods []string,
 	requestURL *url.URL,
@@ -35,6 +39,7 @@ func NewRequestGenerator(
 	bodies []string,
 	values []string,
 	fileCache *FileCache,
+	scriptTransformer *script.Transformer,
 ) (RequestGenerator, bool) {
 	randSource := NewDefaultRandSource()
 	//nolint:gosec // G404: Using non-cryptographic rand for load testing, not security
@@ -52,6 +57,8 @@ func NewRequestGenerator(
 	bodyGenerator, isBodyGeneratorDynamic := NewBodyGeneratorFunc(localRand, bodies, bodyTemplateFuncMap)
 
 	valuesGenerator := NewValuesGeneratorFunc(values, templateFuncMap)
+
+	hasScripts := scriptTransformer != nil && !scriptTransformer.IsEmpty()
 
 	var (
 		data valuesData
@@ -98,13 +105,24 @@ func NewRequestGenerator(
 			if requestURL.Scheme == "https" {
 				req.URI().SetScheme("https")
 			}
+
+			// Apply script transformations if any
+			if hasScripts {
+				reqData := script.RequestDataFromFastHTTP(req)
+				if err = scriptTransformer.Transform(reqData); err != nil {
+					return err
+				}
+				script.ApplyToFastHTTP(reqData, req)
+			}
+
 			return nil
 		}, isPathGeneratorDynamic ||
 			isMethodGeneratorDynamic ||
 			isParamsGeneratorDynamic ||
 			isHeadersGeneratorDynamic ||
 			isCookiesGeneratorDynamic ||
-			isBodyGeneratorDynamic
+			isBodyGeneratorDynamic ||
+			hasScripts
 }
 
 func NewMethodGeneratorFunc(localRand *rand.Rand, methods []string, templateFunctions template.FuncMap) (RequestGeneratorWithData, bool) {

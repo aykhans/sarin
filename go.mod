@@ -9,8 +9,10 @@ require (
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/dop251/goja v0.0.0-20260106131823-651366fbe6e3
 	github.com/joho/godotenv v1.5.1
 	github.com/valyala/fasthttp v1.69.0
+	github.com/yuin/gopher-lua v1.1.1
 	go.aykhans.me/utils v1.0.7
 	go.yaml.in/yaml/v4 v4.0.0-rc.3
 	golang.org/x/net v0.49.0
@@ -32,6 +34,8 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect

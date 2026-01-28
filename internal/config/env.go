@@ -216,6 +216,14 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 		config.Values = []string{values}
 	}
 
+	if lua := parser.getEnv("LUA"); lua != "" {
+		config.Lua = []string{lua}
+	}
+
+	if js := parser.getEnv("JS"); js != "" {
+		config.Js = []string{js}
+	}
+
 	if len(fieldParseErrors) > 0 {
 		return nil, types.NewFieldParseErrors(fieldParseErrors)
 	}
