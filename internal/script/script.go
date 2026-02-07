@@ -17,7 +17,6 @@ import (
 // Headers, Params, and Cookies use []string values to support multiple values per key.
 type RequestData struct {
 	Method  string              `json:"method"`
-	URL     string              `json:"url"`
 	Path    string              `json:"path"`
 	Headers map[string][]string `json:"headers"`
 	Params  map[string][]string `json:"params"`

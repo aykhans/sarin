@@ -86,7 +86,6 @@ func (e *JsEngine) requestDataToObject(req *RequestData) goja.Value {
 	obj := e.runtime.NewObject()
 
 	_ = obj.Set("method", req.Method)
-	_ = obj.Set("url", req.URL)
 	_ = obj.Set("path", req.Path)
 	_ = obj.Set("body", req.Body)
 
@@ -128,11 +127,6 @@ func (e *JsEngine) objectToRequestData(val goja.Value, req *RequestData) error {
 	// Method
 	if v := obj.Get("method"); v != nil && !goja.IsUndefined(v) {
 		req.Method = v.String()
-	}
-
-	// URL
-	if v := obj.Get("url"); v != nil && !goja.IsUndefined(v) {
-		req.URL = v.String()
 	}
 
 	// Path

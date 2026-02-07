@@ -1,7 +1,6 @@
 package script
 
 import (
-	"github.com/valyala/fasthttp"
 	"go.aykhans.me/sarin/internal/types"
 )
 
@@ -105,84 +104,4 @@ func (t *Transformer) Close() {
 // IsEmpty returns true if there are no engines.
 func (t *Transformer) IsEmpty() bool {
 	return len(t.luaEngines) == 0 && len(t.jsEngines) == 0
-}
-
-// RequestDataFromFastHTTP extracts RequestData from a fasthttp.Request.
-func RequestDataFromFastHTTP(req *fasthttp.Request) *RequestData {
-	data := &RequestData{
-		Method:  string(req.Header.Method()),
-		URL:     string(req.URI().FullURI()),
-		Path:    string(req.URI().Path()),
-		Body:    string(req.Body()),
-		Headers: make(map[string][]string),
-		Params:  make(map[string][]string),
-		Cookies: make(map[string][]string),
-	}
-
-	// Extract headers (supports multiple values per key)
-	req.Header.All()(func(key, value []byte) bool {
-		k := string(key)
-		data.Headers[k] = append(data.Headers[k], string(value))
-		return true
-	})
-
-	// Extract query params (supports multiple values per key)
-	req.URI().QueryArgs().All()(func(key, value []byte) bool {
-		k := string(key)
-		data.Params[k] = append(data.Params[k], string(value))
-		return true
-	})
-
-	// Extract cookies (supports multiple values per key)
-	req.Header.Cookies()(func(key, value []byte) bool {
-		k := string(key)
-		data.Cookies[k] = append(data.Cookies[k], string(value))
-		return true
-	})
-
-	return data
-}
-
-// ApplyToFastHTTP applies the modified RequestData back to a fasthttp.Request.
-func ApplyToFastHTTP(data *RequestData, req *fasthttp.Request) {
-	// Method
-	req.Header.SetMethod(data.Method)
-
-	// Path (preserve scheme and host)
-	req.URI().SetPath(data.Path)
-
-	// Body
-	req.SetBody([]byte(data.Body))
-
-	// Clear and set headers (supports multiple values per key)
-	req.Header.All()(func(key, _ []byte) bool {
-		keyStr := string(key)
-		if keyStr != "Host" {
-			req.Header.Del(keyStr)
-		}
-		return true
-	})
-	for k, values := range data.Headers {
-		if k != "Host" { // Don't overwrite Host
-			for _, v := range values {
-				req.Header.Add(k, v)
-			}
-		}
-	}
-
-	// Clear and set query params (supports multiple values per key)
-	req.URI().QueryArgs().Reset()
-	for k, values := range data.Params {
-		for _, v := range values {
-			req.URI().QueryArgs().Add(k, v)
-		}
-	}
-
-	// Clear and set cookies (supports multiple values per key)
-	req.Header.DelAllCookies()
-	for k, values := range data.Cookies {
-		for _, v := range values {
-			req.Header.SetCookie(k, v)
-		}
-	}
 }

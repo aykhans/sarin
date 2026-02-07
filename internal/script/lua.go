@@ -90,7 +90,6 @@ func (e *LuaEngine) requestDataToTable(req *RequestData) *lua.LTable {
 	t := L.NewTable()
 
 	t.RawSetString("method", lua.LString(req.Method))
-	t.RawSetString("url", lua.LString(req.URL))
 	t.RawSetString("path", lua.LString(req.Path))
 	t.RawSetString("body", lua.LString(req.Body))
 
@@ -135,11 +134,6 @@ func (e *LuaEngine) tableToRequestData(t *lua.LTable, req *RequestData) {
 	// Method
 	if v := t.RawGetString("method"); v.Type() == lua.LTString {
 		req.Method = string(v.(lua.LString))
-	}
-
-	// URL
-	if v := t.RawGetString("url"); v.Type() == lua.LTString {
-		req.URL = string(v.(lua.LString))
 	}
 
 	// Path
