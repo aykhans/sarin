@@ -638,10 +638,16 @@ func parseConfigFile(configFile types.ConfigFile, maxDepth int) (*Config, error)
 //   - Escaped "@": strings starting with "@@" (literal "@" at start)
 //   - File reference: "@/path/to/file" or "@./relative/path"
 //   - URL reference: "@http://..." or "@https://..."
+//
+// It can return the following errors:
+//   - types.ErrScriptEmpty
+//   - types.ErrScriptSourceEmpty
+//   - types.ErrScriptURLNoHost
+//   - types.URLParseError
 func validateScriptSource(script string) error {
 	// Empty script is invalid
 	if script == "" {
-		return errors.New("script cannot be empty")
+		return types.ErrScriptEmpty
 	}
 
 	// Not a file/URL reference - it's an inline script
@@ -658,17 +664,17 @@ func validateScriptSource(script string) error {
 	source := script[1:] // Remove the @ prefix
 
 	if source == "" {
-		return errors.New("script source cannot be empty after @")
+		return types.ErrScriptSourceEmpty
 	}
 
-	// Check if it's a URL
+	// Check if it's a http(s) URL
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		parsedURL, err := url.Parse(source)
 		if err != nil {
-			return fmt.Errorf("invalid URL: %w", err)
+			return types.NewURLParseError(source, err)
 		}
 		if parsedURL.Host == "" {
-			return errors.New("URL must have a host")
+			return types.ErrScriptURLNoHost
 		}
 		return nil
 	}

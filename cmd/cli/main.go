@@ -55,13 +55,19 @@ func main() {
 		*combinedConfig.DryRun,
 		combinedConfig.Lua, combinedConfig.Js,
 	)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, config.StyleRed.Render("[ERROR] ")+err.Error())
-		os.Exit(1)
-	}
 	_ = utilsErr.MustHandle(err,
 		utilsErr.OnType(func(err types.ProxyDialError) error {
 			fmt.Fprintln(os.Stderr, config.StyleRed.Render("[PROXY] ")+err.Error())
+			os.Exit(1)
+			return nil
+		}),
+		utilsErr.OnSentinel(types.ErrScriptEmpty, func(err error) error {
+			fmt.Fprintln(os.Stderr, config.StyleRed.Render("[SCRIPT] ")+err.Error())
+			os.Exit(1)
+			return nil
+		}),
+		utilsErr.OnType(func(err types.ScriptLoadError) error {
+			fmt.Fprintln(os.Stderr, config.StyleRed.Render("[SCRIPT] ")+err.Error())
 			os.Exit(1)
 			return nil
 		}),

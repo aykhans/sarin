@@ -1,9 +1,8 @@
 package script
 
 import (
-	"fmt"
-
 	"github.com/valyala/fasthttp"
+	"go.aykhans.me/sarin/internal/types"
 )
 
 // Chain holds the loaded script sources and can create engine instances.
@@ -36,6 +35,8 @@ type Transformer struct {
 
 // NewTransformer creates engine instances from the chain's sources.
 // Call this once per worker goroutine.
+// It can return the following errors:
+//   - types.ScriptChainError
 func (c *Chain) NewTransformer() (*Transformer, error) {
 	if c.IsEmpty() {
 		return &Transformer{}, nil
@@ -51,7 +52,7 @@ func (c *Chain) NewTransformer() (*Transformer, error) {
 		engine, err := NewLuaEngine(src.Content)
 		if err != nil {
 			t.Close() // Clean up already created engines
-			return nil, fmt.Errorf("lua script[%d]: %w", i, err)
+			return nil, types.NewScriptChainError("lua", i, err)
 		}
 		t.luaEngines = append(t.luaEngines, engine)
 	}
@@ -61,7 +62,7 @@ func (c *Chain) NewTransformer() (*Transformer, error) {
 		engine, err := NewJsEngine(src.Content)
 		if err != nil {
 			t.Close() // Clean up already created engines
-			return nil, fmt.Errorf("js script[%d]: %w", i, err)
+			return nil, types.NewScriptChainError("js", i, err)
 		}
 		t.jsEngines = append(t.jsEngines, engine)
 	}
@@ -71,18 +72,20 @@ func (c *Chain) NewTransformer() (*Transformer, error) {
 
 // Transform applies all scripts to the request data.
 // Lua scripts run first, then JavaScript scripts.
+// It can return the following errors:
+//   - types.ScriptChainError
 func (t *Transformer) Transform(req *RequestData) error {
 	// Run Lua scripts
 	for i, engine := range t.luaEngines {
 		if err := engine.Transform(req); err != nil {
-			return fmt.Errorf("lua script[%d]: %w", i, err)
+			return types.NewScriptChainError("lua", i, err)
 		}
 	}
 
 	// Run JS scripts
 	for i, engine := range t.jsEngines {
 		if err := engine.Transform(req); err != nil {
-			return fmt.Errorf("js script[%d]: %w", i, err)
+			return types.NewScriptChainError("js", i, err)
 		}
 	}
 

@@ -58,8 +58,9 @@ type sarin struct {
 
 // NewSarin creates a new sarin instance for load testing.
 // It can return the following errors:
-// - types.ProxyDialError
-// - script loading errors
+//   - types.ProxyDialError
+//   - types.ErrScriptEmpty
+//   - types.ScriptLoadError
 func NewSarin(
 	ctx context.Context,
 	methods []string,
@@ -216,7 +217,8 @@ func (q sarin) Worker(
 	// Scripts are pre-validated in NewSarin, so this should not fail
 	var scriptTransformer *script.Transformer
 	if !q.scriptChain.IsEmpty() {
-		scriptTransformer, err := q.scriptChain.NewTransformer()
+		var err error
+		scriptTransformer, err = q.scriptChain.NewTransformer()
 		if err != nil {
 			panic(err)
 		}

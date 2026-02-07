@@ -1,10 +1,10 @@
 package script
 
 import (
-	"errors"
 	"fmt"
 
 	lua "github.com/yuin/gopher-lua"
+	"go.aykhans.me/sarin/internal/types"
 )
 
 // LuaEngine implements the Engine interface using gopher-lua.
@@ -20,23 +20,27 @@ type LuaEngine struct {
 // Example Lua script:
 //
 //	function transform(req)
-//	    req.headers["X-Custom"] = "value"
+//	    req.headers["X-Custom"] = {"value"}
 //	    return req
 //	end
+//
+// It can return the following errors:
+//   - types.ErrScriptTransformMissing
+//   - types.ScriptExecutionError
 func NewLuaEngine(scriptContent string) (*LuaEngine, error) {
 	L := lua.NewState()
 
 	// Execute the script to define the transform function
 	if err := L.DoString(scriptContent); err != nil {
 		L.Close()
-		return nil, fmt.Errorf("failed to execute Lua script: %w", err)
+		return nil, types.NewScriptExecutionError("Lua", err)
 	}
 
 	// Get the transform function
 	transform := L.GetGlobal("transform")
 	if transform.Type() != lua.LTFunction {
 		L.Close()
-		return nil, errors.New("script must define a global 'transform' function")
+		return nil, types.ErrScriptTransformMissing
 	}
 
 	return &LuaEngine{
@@ -46,6 +50,8 @@ func NewLuaEngine(scriptContent string) (*LuaEngine, error) {
 }
 
 // Transform executes the Lua transform function with the given request data.
+// It can return the following errors:
+//   - types.ScriptExecutionError
 func (e *LuaEngine) Transform(req *RequestData) error {
 	// Convert RequestData to Lua table
 	reqTable := e.requestDataToTable(req)
@@ -54,7 +60,7 @@ func (e *LuaEngine) Transform(req *RequestData) error {
 	e.state.Push(e.transform)
 	e.state.Push(reqTable)
 	if err := e.state.PCall(1, 1, nil); err != nil {
-		return fmt.Errorf("lua transform error: %w", err)
+		return types.NewScriptExecutionError("Lua", err)
 	}
 
 	// Get the result
@@ -62,7 +68,7 @@ func (e *LuaEngine) Transform(req *RequestData) error {
 	e.state.Pop(1)
 
 	if result.Type() != lua.LTTable {
-		return fmt.Errorf("transform function must return a table, got %s", result.Type())
+		return types.NewScriptExecutionError("Lua", fmt.Errorf("transform function must return a table, got %s", result.Type()))
 	}
 
 	// Update RequestData from the returned table

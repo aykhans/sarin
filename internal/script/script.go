@@ -2,14 +2,14 @@ package script
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"go.aykhans.me/sarin/internal/types"
 )
 
 // RequestData represents the request data passed to scripts for transformation.
@@ -56,9 +56,13 @@ type Source struct {
 //   - Escaped "@": strings starting with "@@" (literal "@" at start, returns string without first @)
 //   - File reference: "@/path/to/file" or "@./relative/path"
 //   - URL reference: "@http://..." or "@https://..."
+//
+// It can return the following errors:
+//   - types.ErrScriptEmpty
+//   - types.ScriptLoadError
 func LoadSource(ctx context.Context, source string, engineType EngineType) (*Source, error) {
 	if source == "" {
-		return nil, errors.New("script source cannot be empty")
+		return nil, types.ErrScriptEmpty
 	}
 
 	var content string
@@ -77,7 +81,7 @@ func LoadSource(ctx context.Context, source string, engineType EngineType) (*Sou
 			content, err = readFile(ref)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to load script from %q: %w", ref, err)
+			return nil, types.NewScriptLoadError(ref, err)
 		}
 	default:
 		// Inline script
@@ -91,12 +95,15 @@ func LoadSource(ctx context.Context, source string, engineType EngineType) (*Sou
 }
 
 // LoadSources loads multiple script sources.
+// It can return the following errors:
+//   - types.ErrScriptEmpty
+//   - types.ScriptLoadError
 func LoadSources(ctx context.Context, sources []string, engineType EngineType) ([]*Source, error) {
 	loaded := make([]*Source, 0, len(sources))
-	for i, src := range sources {
+	for _, src := range sources {
 		source, err := LoadSource(ctx, src, engineType)
 		if err != nil {
-			return nil, fmt.Errorf("script[%d]: %w", i, err)
+			return nil, err
 		}
 		loaded = append(loaded, source)
 	}
@@ -106,6 +113,12 @@ func LoadSources(ctx context.Context, sources []string, engineType EngineType) (
 // ValidateScript validates a script source by loading it and checking syntax.
 // It loads the script (from file/URL/inline), parses it, and verifies
 // that a 'transform' function is defined.
+// It can return the following errors:
+//   - types.ErrScriptEmpty
+//   - types.ErrScriptTransformMissing
+//   - types.ScriptLoadError
+//   - types.ScriptExecutionError
+//   - types.ScriptUnknownEngineError
 func ValidateScript(ctx context.Context, source string, engineType EngineType) error {
 	// Load the script source
 	src, err := LoadSource(ctx, source, engineType)
@@ -121,7 +134,7 @@ func ValidateScript(ctx context.Context, source string, engineType EngineType) e
 	case EngineTypeJavaScript:
 		engine, err = NewJsEngine(src.Content)
 	default:
-		return fmt.Errorf("unknown engine type: %s", engineType)
+		return types.NewScriptUnknownEngineError(string(engineType))
 	}
 
 	if err != nil {
@@ -134,56 +147,67 @@ func ValidateScript(ctx context.Context, source string, engineType EngineType) e
 }
 
 // ValidateScripts validates multiple script sources.
+// It can return the following errors:
+//   - types.ErrScriptEmpty
+//   - types.ErrScriptTransformMissing
+//   - types.ScriptLoadError
+//   - types.ScriptExecutionError
+//   - types.ScriptUnknownEngineError
 func ValidateScripts(ctx context.Context, sources []string, engineType EngineType) error {
-	for i, src := range sources {
+	for _, src := range sources {
 		if err := ValidateScript(ctx, src, engineType); err != nil {
-			return fmt.Errorf("script[%d]: %w", i, err)
+			return err
 		}
 	}
 	return nil
 }
 
 // fetchURL downloads content from an HTTP/HTTPS URL.
+// It can return the following errors:
+//   - types.HTTPFetchError
+//   - types.HTTPStatusError
 func fetchURL(ctx context.Context, url string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", types.NewHTTPFetchError(url, err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch: %w", err)
+		return "", types.NewHTTPFetchError(url, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d %s", resp.StatusCode, resp.Status)
+		return "", types.NewHTTPStatusError(url, resp.StatusCode, resp.Status)
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return "", types.NewHTTPFetchError(url, err)
 	}
 
 	return string(data), nil
 }
 
 // readFile reads content from a local file.
+// It can return the following errors:
+//   - types.FileReadError
 func readFile(path string) (string, error) {
 	if !filepath.IsAbs(path) {
 		pwd, err := os.Getwd()
 		if err != nil {
-			return "", fmt.Errorf("failed to get working directory: %w", err)
+			return "", types.NewFileReadError(path, err)
 		}
 		path = filepath.Join(pwd, path)
 	}
 
 	data, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
-		return "", fmt.Errorf("failed to read file: %w", err)
+		return "", types.NewFileReadError(path, err)
 	}
 
 	return string(data), nil

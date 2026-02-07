@@ -49,6 +49,10 @@ func (parser ConfigFileParser) Parse() (*Config, error) {
 }
 
 // fetchFile retrieves file contents from a local path or HTTP/HTTPS URL.
+// It can return the following errors:
+//   - types.FileReadError
+//   - types.HTTPFetchError
+//   - types.HTTPStatusError
 func fetchFile(ctx context.Context, src string) ([]byte, error) {
 	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
 		return fetchHTTP(ctx, src)
@@ -57,25 +61,28 @@ func fetchFile(ctx context.Context, src string) ([]byte, error) {
 }
 
 // fetchHTTP downloads file contents from an HTTP/HTTPS URL.
+// It can return the following errors:
+//   - types.HTTPFetchError
+//   - types.HTTPStatusError
 func fetchHTTP(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, types.NewHTTPFetchError(url, err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch file: %w", err)
+		return nil, types.NewHTTPFetchError(url, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch file: HTTP %d %s", resp.StatusCode, resp.Status)
+		return nil, types.NewHTTPStatusError(url, resp.StatusCode, resp.Status)
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, types.NewHTTPFetchError(url, err)
 	}
 
 	return data, nil
@@ -83,19 +90,21 @@ func fetchHTTP(ctx context.Context, url string) ([]byte, error) {
 
 // fetchLocal reads file contents from the local filesystem.
 // It resolves relative paths from the current working directory.
+// It can return the following errors:
+//   - types.FileReadError
 func fetchLocal(src string) ([]byte, error) {
 	path := src
 	if !filepath.IsAbs(src) {
 		pwd, err := os.Getwd()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get working directory: %w", err)
+			return nil, types.NewFileReadError(src, err)
 		}
 		path = filepath.Join(pwd, src)
 	}
 
 	data, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, types.NewFileReadError(path, err)
 	}
 
 	return data, nil

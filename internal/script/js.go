@@ -2,9 +2,9 @@ package script
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/dop251/goja"
+	"go.aykhans.me/sarin/internal/types"
 )
 
 // JsEngine implements the Engine interface using goja (JavaScript).
@@ -20,27 +20,31 @@ type JsEngine struct {
 // Example JavaScript script:
 //
 //	function transform(req) {
-//	    req.headers["X-Custom"] = "value";
+//	    req.headers["X-Custom"] = ["value"];
 //	    return req;
 //	}
+//
+// It can return the following errors:
+//   - types.ErrScriptTransformMissing
+//   - types.ScriptExecutionError
 func NewJsEngine(scriptContent string) (*JsEngine, error) {
 	vm := goja.New()
 
 	// Execute the script to define the transform function
 	_, err := vm.RunString(scriptContent)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute JavaScript script: %w", err)
+		return nil, types.NewScriptExecutionError("JavaScript", err)
 	}
 
 	// Get the transform function
 	transformVal := vm.Get("transform")
 	if transformVal == nil || goja.IsUndefined(transformVal) || goja.IsNull(transformVal) {
-		return nil, errors.New("script must define a global 'transform' function")
+		return nil, types.ErrScriptTransformMissing
 	}
 
 	transform, ok := goja.AssertFunction(transformVal)
 	if !ok {
-		return nil, errors.New("'transform' must be a function")
+		return nil, types.NewScriptExecutionError("JavaScript", errors.New("'transform' must be a function"))
 	}
 
 	return &JsEngine{
@@ -50,6 +54,8 @@ func NewJsEngine(scriptContent string) (*JsEngine, error) {
 }
 
 // Transform executes the JavaScript transform function with the given request data.
+// It can return the following errors:
+//   - types.ScriptExecutionError
 func (e *JsEngine) Transform(req *RequestData) error {
 	// Convert RequestData to JavaScript object
 	reqObj := e.requestDataToObject(req)
@@ -57,12 +63,12 @@ func (e *JsEngine) Transform(req *RequestData) error {
 	// Call transform(req)
 	result, err := e.transform(goja.Undefined(), reqObj)
 	if err != nil {
-		return fmt.Errorf("JavaScript transform error: %w", err)
+		return types.NewScriptExecutionError("JavaScript", err)
 	}
 
 	// Update RequestData from the returned object
 	if err := e.objectToRequestData(result, req); err != nil {
-		return fmt.Errorf("failed to parse transform result: %w", err)
+		return types.NewScriptExecutionError("JavaScript", err)
 	}
 
 	return nil
@@ -111,12 +117,12 @@ func (e *JsEngine) requestDataToObject(req *RequestData) goja.Value {
 // objectToRequestData updates RequestData from a JavaScript object.
 func (e *JsEngine) objectToRequestData(val goja.Value, req *RequestData) error {
 	if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
-		return errors.New("transform function must return an object")
+		return types.ErrScriptTransformReturnObject
 	}
 
 	obj := val.ToObject(e.runtime)
 	if obj == nil {
-		return errors.New("transform function must return an object")
+		return types.ErrScriptTransformReturnObject
 	}
 
 	// Method
@@ -159,7 +165,7 @@ func (e *JsEngine) objectToRequestData(val goja.Value, req *RequestData) error {
 
 // stringSliceToArray converts a Go []string to a JavaScript array.
 func (e *JsEngine) stringSliceToArray(values []string) *goja.Object {
-	ifaces := make([]interface{}, len(values))
+	ifaces := make([]any, len(values))
 	for i, v := range values {
 		ifaces[i] = v
 	}
@@ -181,7 +187,7 @@ func (e *JsEngine) objectToStringSliceMap(obj *goja.Object) map[string][]string 
 		}
 
 		// Check if it's an array
-		if arr, ok := v.Export().([]interface{}); ok {
+		if arr, ok := v.Export().([]any); ok {
 			var values []string
 			for _, item := range arr {
 				if s, ok := item.(string); ok {

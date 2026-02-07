@@ -2,7 +2,6 @@ package sarin
 
 import (
 	"bytes"
-	"fmt"
 	"maps"
 	"math/rand/v2"
 	"net/url"
@@ -261,12 +260,12 @@ func NewValuesGeneratorFunc(values []string, templateFunctions template.FuncMap)
 		for _, generator := range generators {
 			rendered, err = generator(nil)
 			if err != nil {
-				return valuesData{}, fmt.Errorf("values rendering: %w", err)
+				return valuesData{}, types.NewTemplateRenderError(err)
 			}
 
 			data, err = godotenv.Unmarshal(rendered)
 			if err != nil {
-				return valuesData{}, fmt.Errorf("values rendering: %w", err)
+				return valuesData{}, types.NewTemplateRenderError(err)
 			}
 
 			maps.Copy(result, data)
@@ -283,7 +282,7 @@ func createTemplateFunc(value string, templateFunctions template.FuncMap) (func(
 		return func(data any) (string, error) {
 			var buf bytes.Buffer
 			if err = tmpl.Execute(&buf, data); err != nil {
-				return "", fmt.Errorf("template rendering: %w", err)
+				return "", types.NewTemplateRenderError(err)
 			}
 			return buf.String(), nil
 		}, true

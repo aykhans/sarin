@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"errors"
 	"math"
 	"net"
 	"net/http"
@@ -95,6 +94,9 @@ func NewHostClients(
 	return []*fasthttp.HostClient{client}, nil
 }
 
+// NewProxyDialFunc creates a dial function for the given proxy URL.
+// It can return the following errors:
+//   - types.ProxyUnsupportedSchemeError
 func NewProxyDialFunc(ctx context.Context, proxyURL *url.URL, timeout time.Duration) (fasthttp.DialFunc, error) {
 	var (
 		dialer fasthttp.DialFunc
@@ -117,16 +119,14 @@ func NewProxyDialFunc(ctx context.Context, proxyURL *url.URL, timeout time.Durat
 	case "https":
 		dialer = fasthttpHTTPSDialerDualStackTimeout(proxyURL, timeout)
 	default:
-		return nil, errors.New("unsupported proxy scheme")
-	}
-
-	if dialer == nil {
-		return nil, errors.New("internal error: proxy dialer is nil")
+		return nil, types.NewProxyUnsupportedSchemeError(proxyURL.Scheme)
 	}
 
 	return dialer, nil
 }
 
+// The returned dial function can return the following errors:
+//   - types.ProxyDialError
 func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL, timeout time.Duration, resolveLocally bool) (fasthttp.DialFunc, error) {
 	netDialer := &net.Dialer{}
 
@@ -147,12 +147,18 @@ func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL,
 		return nil, err
 	}
 
+	proxyStr := proxyURL.String()
+
 	// Assert to ContextDialer for timeout support
 	contextDialer, ok := socksDialer.(proxy.ContextDialer)
 	if !ok {
 		// Fallback without timeout (should not happen with net.Dialer)
 		return func(addr string) (net.Conn, error) {
-			return socksDialer.Dial("tcp", addr)
+			conn, err := socksDialer.Dial("tcp", addr)
+			if err != nil {
+				return nil, types.NewProxyDialError(proxyStr, err)
+			}
+			return conn, nil
 		}, nil
 	}
 
@@ -163,7 +169,7 @@ func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL,
 		if resolveLocally {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {
-				return nil, err
+				return nil, types.NewProxyDialError(proxyStr, err)
 			}
 
 			// Cap DNS resolution to half the timeout to reserve time for dial
@@ -171,10 +177,10 @@ func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL,
 			ips, err := net.DefaultResolver.LookupIP(dnsCtx, "ip", host)
 			dnsCancel()
 			if err != nil {
-				return nil, err
+				return nil, types.NewProxyDialError(proxyStr, err)
 			}
 			if len(ips) == 0 {
-				return nil, errors.New("no IP addresses found for host: " + host)
+				return nil, types.NewProxyDialError(proxyStr, types.NewProxyResolveError(host))
 			}
 
 			// Use the first resolved IP
@@ -184,16 +190,22 @@ func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL,
 		// Use remaining time for dial
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			return nil, context.DeadlineExceeded
+			return nil, types.NewProxyDialError(proxyStr, context.DeadlineExceeded)
 		}
 
 		dialCtx, dialCancel := context.WithTimeout(ctx, remaining)
 		defer dialCancel()
 
-		return contextDialer.DialContext(dialCtx, "tcp", addr)
+		conn, err := contextDialer.DialContext(dialCtx, "tcp", addr)
+		if err != nil {
+			return nil, types.NewProxyDialError(proxyStr, err)
+		}
+		return conn, nil
 	}, nil
 }
 
+// The returned dial function can return the following errors:
+//   - types.ProxyDialError
 func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duration) fasthttp.DialFunc {
 	proxyAddr := proxyURL.Host
 	if proxyURL.Port() == "" {
@@ -209,24 +221,26 @@ func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duratio
 		proxyAuth = "Basic " + base64.StdEncoding.EncodeToString([]byte(credentials))
 	}
 
+	proxyStr := proxyURL.String()
+
 	return func(addr string) (net.Conn, error) {
 		// Establish TCP connection to proxy with timeout
 		start := time.Now()
 		conn, err := fasthttp.DialDualStackTimeout(proxyAddr, timeout)
 		if err != nil {
-			return nil, err
+			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 
 		remaining := timeout - time.Since(start)
 		if remaining <= 0 {
 			conn.Close() //nolint:errcheck,gosec
-			return nil, context.DeadlineExceeded
+			return nil, types.NewProxyDialError(proxyStr, context.DeadlineExceeded)
 		}
 
 		// Set deadline for the TLS handshake and CONNECT request
 		if err := conn.SetDeadline(time.Now().Add(remaining)); err != nil {
 			conn.Close() //nolint:errcheck,gosec
-			return nil, err
+			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 
 		// Upgrade to TLS
@@ -235,7 +249,7 @@ func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duratio
 		})
 		if err := tlsConn.Handshake(); err != nil {
 			tlsConn.Close() //nolint:errcheck,gosec
-			return nil, err
+			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 
 		// Build and send CONNECT request
@@ -251,7 +265,7 @@ func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duratio
 
 		if err := connectReq.Write(tlsConn); err != nil {
 			tlsConn.Close() //nolint:errcheck,gosec
-			return nil, err
+			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 
 		// Read response using buffered reader, but return wrapped connection
@@ -260,19 +274,19 @@ func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duratio
 		resp, err := http.ReadResponse(bufReader, connectReq)
 		if err != nil {
 			tlsConn.Close() //nolint:errcheck,gosec
-			return nil, err
+			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 		resp.Body.Close() //nolint:errcheck,gosec
 
 		if resp.StatusCode != http.StatusOK {
 			tlsConn.Close() //nolint:errcheck,gosec
-			return nil, errors.New("proxy CONNECT failed: " + resp.Status)
+			return nil, types.NewProxyDialError(proxyStr, types.NewProxyConnectError(resp.Status))
 		}
 
 		// Clear deadline for the tunneled connection
 		if err := tlsConn.SetDeadline(time.Time{}); err != nil {
 			tlsConn.Close() //nolint:errcheck,gosec
-			return nil, err
+			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 
 		// Return wrapped connection that uses the buffered reader
