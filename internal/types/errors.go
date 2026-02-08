@@ -9,7 +9,7 @@ import (
 // ======================================== General ========================================
 
 var (
-	ErrNoError = errors.New("no error (internal)")
+	errNoError = errors.New("no error (internal)")
 )
 
 type FieldParseError struct {
@@ -20,7 +20,7 @@ type FieldParseError struct {
 
 func NewFieldParseError(field string, value string, err error) FieldParseError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return FieldParseError{field, value, err}
 }
@@ -68,7 +68,7 @@ type FieldValidationError struct {
 
 func NewFieldValidationError(field string, value string, err error) FieldValidationError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return FieldValidationError{field, value, err}
 }
@@ -114,7 +114,7 @@ type UnmarshalError struct {
 
 func NewUnmarshalError(err error) UnmarshalError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return UnmarshalError{err}
 }
@@ -136,7 +136,7 @@ type FileReadError struct {
 
 func NewFileReadError(path string, err error) FileReadError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return FileReadError{path, err}
 }
@@ -156,7 +156,7 @@ type HTTPFetchError struct {
 
 func NewHTTPFetchError(url string, err error) HTTPFetchError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return HTTPFetchError{url, err}
 }
@@ -190,7 +190,7 @@ type URLParseError struct {
 
 func NewURLParseError(url string, err error) URLParseError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return URLParseError{url, err}
 }
@@ -216,7 +216,7 @@ type TemplateParseError struct {
 
 func NewTemplateParseError(err error) TemplateParseError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return TemplateParseError{err}
 }
@@ -235,7 +235,7 @@ type TemplateRenderError struct {
 
 func NewTemplateRenderError(err error) TemplateRenderError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return TemplateRenderError{err}
 }
@@ -246,20 +246,6 @@ func (e TemplateRenderError) Error() string {
 
 func (e TemplateRenderError) Unwrap() error {
 	return e.Err
-}
-
-// ======================================== YAML ========================================
-
-type YAMLFormatError struct {
-	Detail string
-}
-
-func NewYAMLFormatError(detail string) YAMLFormatError {
-	return YAMLFormatError{detail}
-}
-
-func (e YAMLFormatError) Error() string {
-	return e.Detail
 }
 
 // ======================================== CLI ========================================
@@ -288,7 +274,7 @@ type ConfigFileReadError struct {
 
 func NewConfigFileReadError(err error) ConfigFileReadError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return ConfigFileReadError{err}
 }
@@ -321,7 +307,7 @@ type ProxyParseError struct {
 
 func NewProxyParseError(err error) ProxyParseError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return ProxyParseError{err}
 }
@@ -365,7 +351,7 @@ type ProxyDialError struct {
 
 func NewProxyDialError(proxy string, err error) ProxyDialError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return ProxyDialError{proxy, err}
 }
@@ -395,7 +381,7 @@ type ScriptLoadError struct {
 
 func NewScriptLoadError(source string, err error) ScriptLoadError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return ScriptLoadError{source, err}
 }
@@ -415,7 +401,7 @@ type ScriptExecutionError struct {
 
 func NewScriptExecutionError(engineType string, err error) ScriptExecutionError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return ScriptExecutionError{engineType, err}
 }
@@ -436,7 +422,7 @@ type ScriptChainError struct {
 
 func NewScriptChainError(engineType string, index int, err error) ScriptChainError {
 	if err == nil {
-		err = ErrNoError
+		err = errNoError
 	}
 	return ScriptChainError{engineType, index, err}
 }

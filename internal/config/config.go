@@ -93,10 +93,6 @@ type Config struct {
 	Js          []string           `yaml:"js,omitempty"`
 }
 
-func NewConfig() *Config {
-	return &Config{}
-}
-
 func (config Config) MarshalYAML() (any, error) {
 	const randomValueComment = "Cycles through all values, with a new random start each round"
 

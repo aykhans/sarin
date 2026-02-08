@@ -145,22 +145,6 @@ func ValidateScript(ctx context.Context, source string, engineType EngineType) e
 	return nil
 }
 
-// ValidateScripts validates multiple script sources.
-// It can return the following errors:
-//   - types.ErrScriptEmpty
-//   - types.ErrScriptTransformMissing
-//   - types.ScriptLoadError
-//   - types.ScriptExecutionError
-//   - types.ScriptUnknownEngineError
-func ValidateScripts(ctx context.Context, sources []string, engineType EngineType) error {
-	for _, src := range sources {
-		if err := ValidateScript(ctx, src, engineType); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // fetchURL downloads content from an HTTP/HTTPS URL.
 // It can return the following errors:
 //   - types.HTTPFetchError
