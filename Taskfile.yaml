@@ -3,7 +3,7 @@ version: "3"
 
 vars:
   BIN_DIR: ./bin
-  GOLANGCI_LINT_VERSION: v2.8.0
+  GOLANGCI_LINT_VERSION: v2.9.0
   GOLANGCI: "{{.BIN_DIR}}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}"
 
 tasks:
@@ -52,7 +52,7 @@ tasks:
     cmds:
       - rm -f {{.OUTPUT}}
       - >-
-        CGO_ENABLED=0 GOEXPERIMENT=greenteagc go build
+        CGO_ENABLED=0 go build
         -ldflags "-X 'go.aykhans.me/sarin/internal/version.Version=$(git describe --tags --always)'
         -X 'go.aykhans.me/sarin/internal/version.GitCommit=$(git rev-parse HEAD)'
         -X 'go.aykhans.me/sarin/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'

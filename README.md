@@ -56,12 +56,12 @@ Download the latest binaries from the [releases](https://github.com/aykhans/sari
 
 ### Building from Source
 
-Requires [Go 1.25+](https://golang.org/dl/).
+Requires [Go 1.26+](https://golang.org/dl/).
 
 ```sh
 git clone https://github.com/aykhans/sarin.git && cd sarin
 
-CGO_ENABLED=0 GOEXPERIMENT=greenteagc go build \
+CGO_ENABLED=0 go build \
     -ldflags "-X 'go.aykhans.me/sarin/internal/version.Version=dev' \
     -X 'go.aykhans.me/sarin/internal/version.GitCommit=$(git rev-parse HEAD)' \
     -X 'go.aykhans.me/sarin/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \
