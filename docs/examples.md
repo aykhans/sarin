@@ -15,6 +15,7 @@ This guide provides practical examples for common Sarin use cases.
 - [Docker Usage](#docker-usage)
 - [Dry Run Mode](#dry-run-mode)
 - [Show Configuration](#show-configuration)
+- [Scripting](#scripting)
 
 ---
 
@@ -891,6 +892,127 @@ concurrency: 10
 showConfig: true
 headers:
     Authorization: Bearer token
+```
+
+</details>
+
+## Scripting
+
+Transform requests using Lua or JavaScript scripts. Scripts run after template rendering, before the request is sent.
+
+**Add a custom header with Lua:**
+
+```sh
+sarin -U http://example.com/api -r 1000 -c 10 \
+  -lua 'function transform(req) req.headers["X-Custom"] = "my-value" return req end'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api
+requests: 1000
+concurrency: 10
+lua: |
+    function transform(req)
+        req.headers["X-Custom"] = "my-value"
+        return req
+    end
+```
+
+</details>
+
+**Modify request body with JavaScript:**
+
+```sh
+sarin -U http://example.com/api/data -r 1000 -c 10 \
+  -M POST \
+  -H "Content-Type: application/json" \
+  -B '{"name": "test"}' \
+  -js 'function transform(req) { var body = JSON.parse(req.body); body.timestamp = Date.now(); req.body = JSON.stringify(body); return req; }'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/data
+requests: 1000
+concurrency: 10
+method: POST
+headers:
+    Content-Type: application/json
+body: '{"name": "test"}'
+js: |
+    function transform(req) {
+        var body = JSON.parse(req.body);
+        body.timestamp = Date.now();
+        req.body = JSON.stringify(body);
+        return req;
+    }
+```
+
+</details>
+
+**Load script from a file:**
+
+```sh
+sarin -U http://example.com/api -r 1000 -c 10 \
+  -lua @./scripts/transform.lua
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api
+requests: 1000
+concurrency: 10
+lua: "@./scripts/transform.lua"
+```
+
+</details>
+
+**Load script from a URL:**
+
+```sh
+sarin -U http://example.com/api -r 1000 -c 10 \
+  -js @https://example.com/scripts/transform.js
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api
+requests: 1000
+concurrency: 10
+js: "@https://example.com/scripts/transform.js"
+```
+
+</details>
+
+**Chain multiple scripts (Lua runs first, then JavaScript):**
+
+```sh
+sarin -U http://example.com/api -r 1000 -c 10 \
+  -lua @./scripts/auth.lua \
+  -lua @./scripts/headers.lua \
+  -js @./scripts/body.js
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api
+requests: 1000
+concurrency: 10
+lua:
+    - "@./scripts/auth.lua"
+    - "@./scripts/headers.lua"
+js: "@./scripts/body.js"
 ```
 
 </details>

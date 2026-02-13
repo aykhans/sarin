@@ -42,8 +42,8 @@ Flags:
     -V, -values        []string   List of values for templating (e.g. "key1=value1")
     -T, -timeout       time       Timeout for the request (e.g. 400ms, 3s, 1m10s) (default %v)
     -I, -insecure      bool       Skip SSL/TLS certificate verification (default %v)
-    -lua               []string   Lua script for request transformation (inline or @file/@url)
-    -js                []string   JavaScript script for request transformation (inline or @file/@url)`
+        -lua           []string   Lua script for request transformation (inline or @file/@url)
+        -js            []string   JavaScript script for request transformation (inline or @file/@url)`
 
 var _ IParser = ConfigCLIParser{}
 
