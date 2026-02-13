@@ -10,7 +10,6 @@ import (
 
 	"go.aykhans.me/sarin/internal/types"
 	versionpkg "go.aykhans.me/sarin/internal/version"
-	"go.aykhans.me/utils/common"
 )
 
 const cliUsageText = `Usage:
@@ -202,23 +201,23 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		switch flagVar.Name {
 		// General config
 		case "show-config", "s":
-			config.ShowConfig = common.ToPtr(showConfig)
+			config.ShowConfig = new(showConfig)
 		case "config-file", "f":
 			for _, configFile := range configFiles {
 				config.Files = append(config.Files, *types.ParseConfigFile(configFile))
 			}
 		case "concurrency", "c":
-			config.Concurrency = common.ToPtr(concurrency)
+			config.Concurrency = new(concurrency)
 		case "requests", "r":
-			config.Requests = common.ToPtr(requestCount)
+			config.Requests = new(requestCount)
 		case "duration", "d":
-			config.Duration = common.ToPtr(duration)
+			config.Duration = new(duration)
 		case "quiet", "q":
-			config.Quiet = common.ToPtr(quiet)
+			config.Quiet = new(quiet)
 		case "output", "o":
-			config.Output = common.ToPtr(ConfigOutputType(output))
+			config.Output = new(ConfigOutputType(output))
 		case "dry-run", "z":
-			config.DryRun = common.ToPtr(dryRun)
+			config.DryRun = new(dryRun)
 
 		// Request config
 		case "url", "U":
@@ -251,9 +250,9 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		case "values", "V":
 			config.Values = append(config.Values, values...)
 		case "timeout", "T":
-			config.Timeout = common.ToPtr(timeout)
+			config.Timeout = new(timeout)
 		case "insecure", "I":
-			config.Insecure = common.ToPtr(insecure)
+			config.Insecure = new(insecure)
 		case "lua":
 			config.Lua = append(config.Lua, luaScripts...)
 		case "js":

@@ -356,26 +356,26 @@ func (config *Config) SetDefaults() {
 		config.Timeout = &Defaults.RequestTimeout
 	}
 	if config.Concurrency == nil {
-		config.Concurrency = common.ToPtr(Defaults.Concurrency)
+		config.Concurrency = new(Defaults.Concurrency)
 	}
 	if config.ShowConfig == nil {
-		config.ShowConfig = common.ToPtr(Defaults.ShowConfig)
+		config.ShowConfig = new(Defaults.ShowConfig)
 	}
 	if config.Quiet == nil {
-		config.Quiet = common.ToPtr(Defaults.Quiet)
+		config.Quiet = new(Defaults.Quiet)
 	}
 	if config.Insecure == nil {
-		config.Insecure = common.ToPtr(Defaults.Insecure)
+		config.Insecure = new(Defaults.Insecure)
 	}
 	if config.DryRun == nil {
-		config.DryRun = common.ToPtr(Defaults.DryRun)
+		config.DryRun = new(Defaults.DryRun)
 	}
 	if !config.Headers.Has("User-Agent") {
 		config.Headers = append(config.Headers, types.Header{Key: "User-Agent", Value: []string{Defaults.UserAgent}})
 	}
 
 	if config.Output == nil {
-		config.Output = common.ToPtr(Defaults.Output)
+		config.Output = new(Defaults.Output)
 	}
 }
 

@@ -11,15 +11,21 @@ tasks:
     desc: Run fmt, tidy, and lint.
     cmds:
       - task: fmt
+      - task: fix
       - task: tidy
       - task: lint
 
   fmt:
-    desc: Run linters
+    desc: Run format
     deps:
       - install-golangci-lint
     cmds:
       - "{{.GOLANGCI}} fmt"
+
+  fix:
+    desc: Run go fix
+    cmds:
+      - go fix ./...
 
   tidy:
     desc: Run go mod tidy.

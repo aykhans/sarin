@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"go.aykhans.me/sarin/internal/types"
-	"go.aykhans.me/utils/common"
 	"go.yaml.in/yaml/v4"
 )
 
@@ -241,7 +240,7 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 	config.Quiet = parsedData.Quiet
 
 	if parsedData.Output != nil {
-		config.Output = common.ToPtr(ConfigOutputType(*parsedData.Output))
+		config.Output = new(ConfigOutputType(*parsedData.Output))
 	}
 
 	config.Insecure = parsedData.Insecure

@@ -17,6 +17,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: 1.26.0
+      - name: go fix
+        run: |
+          go fix ./...
+          git diff --exit-code
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
