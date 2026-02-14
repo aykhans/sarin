@@ -15,7 +15,7 @@ require (
 	github.com/yuin/gopher-lua v1.1.1
 	go.aykhans.me/utils v1.0.7
 	go.yaml.in/yaml/v4 v4.0.0-rc.3
-	golang.org/x/net v0.49.0
+	golang.org/x/net v0.50.0
 )
 
 require (
@@ -53,7 +53,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.7.16 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
-	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/term v0.39.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/term v0.40.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 )
