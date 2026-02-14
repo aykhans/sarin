@@ -2,7 +2,6 @@ package sarin
 
 import (
 	"bytes"
-	"fmt"
 	"maps"
 	"math/rand/v2"
 	"net/url"
@@ -11,13 +10,14 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/valyala/fasthttp"
+	"go.aykhans.me/sarin/internal/script"
 	"go.aykhans.me/sarin/internal/types"
 	utilsSlice "go.aykhans.me/utils/slice"
 )
 
 type RequestGenerator func(*fasthttp.Request) error
 
-type RequestGeneratorWithData func(*fasthttp.Request, any) error
+type requestDataGenerator func(*script.RequestData, any) error
 
 type valuesData struct {
 	Values map[string]string
@@ -26,6 +26,9 @@ type valuesData struct {
 // NewRequestGenerator creates a new RequestGenerator function that generates HTTP requests
 // with the specified configuration. The returned RequestGenerator is NOT safe for concurrent
 // use by multiple goroutines.
+//
+// Note: Scripts must be validated before calling this function (e.g., in NewSarin).
+// The caller is responsible for managing the scriptTransformer lifecycle.
 func NewRequestGenerator(
 	methods []string,
 	requestURL *url.URL,
@@ -35,6 +38,7 @@ func NewRequestGenerator(
 	bodies []string,
 	values []string,
 	fileCache *FileCache,
+	scriptTransformer *script.Transformer,
 ) (RequestGenerator, bool) {
 	randSource := NewDefaultRandSource()
 	//nolint:gosec // G404: Using non-cryptographic rand for load testing, not security
@@ -53,13 +57,24 @@ func NewRequestGenerator(
 
 	valuesGenerator := NewValuesGeneratorFunc(values, templateFuncMap)
 
+	hasScripts := scriptTransformer != nil && !scriptTransformer.IsEmpty()
+
+	host := requestURL.Host
+	scheme := requestURL.Scheme
+
+	reqData := &script.RequestData{
+		Headers: make(map[string][]string),
+		Params:  make(map[string][]string),
+		Cookies: make(map[string][]string),
+	}
+
 	var (
 		data valuesData
 		path string
 		err  error
 	)
 	return func(req *fasthttp.Request) error {
-			req.Header.SetHost(requestURL.Host)
+			resetRequestData(reqData)
 
 			data, err = valuesGenerator()
 			if err != nil {
@@ -70,87 +85,135 @@ func NewRequestGenerator(
 			if err != nil {
 				return err
 			}
-			req.SetRequestURI(path)
+			reqData.Path = path
 
-			if err = methodGenerator(req, data); err != nil {
+			if err = methodGenerator(reqData, data); err != nil {
 				return err
 			}
 
 			bodyTemplateFuncMapData.ClearFormDataContenType()
-			if err = bodyGenerator(req, data); err != nil {
+			if err = bodyGenerator(reqData, data); err != nil {
 				return err
 			}
 
-			if err = headersGenerator(req, data); err != nil {
+			if err = headersGenerator(reqData, data); err != nil {
 				return err
 			}
 			if bodyTemplateFuncMapData.GetFormDataContenType() != "" {
-				req.Header.Add("Content-Type", bodyTemplateFuncMapData.GetFormDataContenType())
+				reqData.Headers["Content-Type"] = append(reqData.Headers["Content-Type"], bodyTemplateFuncMapData.GetFormDataContenType())
 			}
 
-			if err = paramsGenerator(req, data); err != nil {
+			if err = paramsGenerator(reqData, data); err != nil {
 				return err
 			}
-			if err = cookiesGenerator(req, data); err != nil {
+			if err = cookiesGenerator(reqData, data); err != nil {
 				return err
 			}
 
-			if requestURL.Scheme == "https" {
-				req.URI().SetScheme("https")
+			if hasScripts {
+				if err = scriptTransformer.Transform(reqData); err != nil {
+					return err
+				}
 			}
+
+			applyRequestDataToFastHTTP(reqData, req, host, scheme)
+
 			return nil
 		}, isPathGeneratorDynamic ||
 			isMethodGeneratorDynamic ||
 			isParamsGeneratorDynamic ||
 			isHeadersGeneratorDynamic ||
 			isCookiesGeneratorDynamic ||
-			isBodyGeneratorDynamic
+			isBodyGeneratorDynamic ||
+			hasScripts
 }
 
-func NewMethodGeneratorFunc(localRand *rand.Rand, methods []string, templateFunctions template.FuncMap) (RequestGeneratorWithData, bool) {
+func resetRequestData(reqData *script.RequestData) {
+	reqData.Method = ""
+	reqData.Path = ""
+	reqData.Body = ""
+	clear(reqData.Headers)
+	clear(reqData.Params)
+	clear(reqData.Cookies)
+}
+
+func applyRequestDataToFastHTTP(reqData *script.RequestData, req *fasthttp.Request, host, scheme string) {
+	req.Header.SetHost(host)
+	req.SetRequestURI(reqData.Path)
+	req.Header.SetMethod(reqData.Method)
+	req.SetBody([]byte(reqData.Body))
+
+	for k, values := range reqData.Headers {
+		for _, v := range values {
+			req.Header.Add(k, v)
+		}
+	}
+
+	for k, values := range reqData.Params {
+		for _, v := range values {
+			req.URI().QueryArgs().Add(k, v)
+		}
+	}
+
+	if len(reqData.Cookies) > 0 {
+		cookieStrings := make([]string, 0, len(reqData.Cookies))
+		for k, values := range reqData.Cookies {
+			for _, v := range values {
+				cookieStrings = append(cookieStrings, k+"="+v)
+			}
+		}
+		req.Header.Add("Cookie", strings.Join(cookieStrings, "; "))
+	}
+
+	if scheme == "https" {
+		req.URI().SetScheme("https")
+	}
+}
+
+func NewMethodGeneratorFunc(localRand *rand.Rand, methods []string, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
 	methodGenerator, isDynamic := buildStringSliceGenerator(localRand, methods, templateFunctions)
 
 	var (
 		method string
 		err    error
 	)
-	return func(req *fasthttp.Request, data any) error {
+	return func(reqData *script.RequestData, data any) error {
 		method, err = methodGenerator()(data)
 		if err != nil {
 			return err
 		}
 
-		req.Header.SetMethod(method)
+		reqData.Method = method
 		return nil
 	}, isDynamic
 }
 
-func NewBodyGeneratorFunc(localRand *rand.Rand, bodies []string, templateFunctions template.FuncMap) (RequestGeneratorWithData, bool) {
+func NewBodyGeneratorFunc(localRand *rand.Rand, bodies []string, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
 	bodyGenerator, isDynamic := buildStringSliceGenerator(localRand, bodies, templateFunctions)
 
 	var (
 		body string
 		err  error
 	)
-	return func(req *fasthttp.Request, data any) error {
+	return func(reqData *script.RequestData, data any) error {
 		body, err = bodyGenerator()(data)
 		if err != nil {
 			return err
 		}
 
-		req.SetBody([]byte(body))
+		reqData.Body = body
 		return nil
 	}, isDynamic
 }
 
-func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, templateFunctions template.FuncMap) (RequestGeneratorWithData, bool) {
+func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
 	generators, isDynamic := buildKeyValueGenerators(localRand, params, templateFunctions)
 
 	var (
 		key, value string
 		err        error
 	)
-	return func(req *fasthttp.Request, data any) error {
+	return func(reqData *script.RequestData, data any) error {
 		for _, gen := range generators {
 			key, err = gen.Key(data)
 			if err != nil {
@@ -162,20 +225,20 @@ func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, templateF
 				return err
 			}
 
-			req.URI().QueryArgs().Add(key, value)
+			reqData.Params[key] = append(reqData.Params[key], value)
 		}
 		return nil
 	}, isDynamic
 }
 
-func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, templateFunctions template.FuncMap) (RequestGeneratorWithData, bool) {
+func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
 	generators, isDynamic := buildKeyValueGenerators(localRand, headers, templateFunctions)
 
 	var (
 		key, value string
 		err        error
 	)
-	return func(req *fasthttp.Request, data any) error {
+	return func(reqData *script.RequestData, data any) error {
 		for _, gen := range generators {
 			key, err = gen.Key(data)
 			if err != nil {
@@ -187,41 +250,33 @@ func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, templa
 				return err
 			}
 
-			req.Header.Add(key, value)
+			reqData.Headers[key] = append(reqData.Headers[key], value)
 		}
 		return nil
 	}, isDynamic
 }
 
-func NewCookiesGeneratorFunc(localRand *rand.Rand, cookies types.Cookies, templateFunctions template.FuncMap) (RequestGeneratorWithData, bool) {
+func NewCookiesGeneratorFunc(localRand *rand.Rand, cookies types.Cookies, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
 	generators, isDynamic := buildKeyValueGenerators(localRand, cookies, templateFunctions)
 
 	var (
 		key, value string
 		err        error
 	)
-	if len(generators) > 0 {
-		return func(req *fasthttp.Request, data any) error {
-			cookieStrings := make([]string, 0, len(generators))
-			for _, gen := range generators {
-				key, err = gen.Key(data)
-				if err != nil {
-					return err
-				}
-
-				value, err = gen.Value()(data)
-				if err != nil {
-					return err
-				}
-
-				cookieStrings = append(cookieStrings, key+"="+value)
+	return func(reqData *script.RequestData, data any) error {
+		for _, gen := range generators {
+			key, err = gen.Key(data)
+			if err != nil {
+				return err
 			}
-			req.Header.Add("Cookie", strings.Join(cookieStrings, "; "))
-			return nil
-		}, isDynamic
-	}
 
-	return func(req *fasthttp.Request, data any) error {
+			value, err = gen.Value()(data)
+			if err != nil {
+				return err
+			}
+
+			reqData.Cookies[key] = append(reqData.Cookies[key], value)
+		}
 		return nil
 	}, isDynamic
 }
@@ -243,12 +298,12 @@ func NewValuesGeneratorFunc(values []string, templateFunctions template.FuncMap)
 		for _, generator := range generators {
 			rendered, err = generator(nil)
 			if err != nil {
-				return valuesData{}, fmt.Errorf("values rendering: %w", err)
+				return valuesData{}, types.NewTemplateRenderError(err)
 			}
 
 			data, err = godotenv.Unmarshal(rendered)
 			if err != nil {
-				return valuesData{}, fmt.Errorf("values rendering: %w", err)
+				return valuesData{}, types.NewTemplateRenderError(err)
 			}
 
 			maps.Copy(result, data)
@@ -265,7 +320,7 @@ func createTemplateFunc(value string, templateFunctions template.FuncMap) (func(
 		return func(data any) (string, error) {
 			var buf bytes.Buffer
 			if err = tmpl.Execute(&buf, data); err != nil {
-				return "", fmt.Errorf("template rendering: %w", err)
+				return "", types.NewTemplateRenderError(err)
 			}
 			return buf.String(), nil
 		}, true

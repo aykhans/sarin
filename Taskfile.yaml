@@ -3,7 +3,7 @@ version: "3"
 
 vars:
   BIN_DIR: ./bin
-  GOLANGCI_LINT_VERSION: v2.7.2
+  GOLANGCI_LINT_VERSION: v2.9.0
   GOLANGCI: "{{.BIN_DIR}}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}"
 
 tasks:
@@ -11,15 +11,21 @@ tasks:
     desc: Run fmt, tidy, and lint.
     cmds:
       - task: fmt
+      - task: fix
       - task: tidy
       - task: lint
 
   fmt:
-    desc: Run linters
+    desc: Run format
     deps:
       - install-golangci-lint
     cmds:
       - "{{.GOLANGCI}} fmt"
+
+  fix:
+    desc: Run go fix
+    cmds:
+      - go fix ./...
 
   tidy:
     desc: Run go mod tidy.
@@ -52,7 +58,7 @@ tasks:
     cmds:
       - rm -f {{.OUTPUT}}
       - >-
-        CGO_ENABLED=0 GOEXPERIMENT=greenteagc go build
+        CGO_ENABLED=0 go build
         -ldflags "-X 'go.aykhans.me/sarin/internal/version.Version=$(git describe --tags --always)'
         -X 'go.aykhans.me/sarin/internal/version.GitCommit=$(git rev-parse HEAD)'
         -X 'go.aykhans.me/sarin/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)'

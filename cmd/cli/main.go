@@ -53,10 +53,21 @@ func main() {
 		combinedConfig.Cookies, combinedConfig.Bodies, combinedConfig.Proxies, combinedConfig.Values,
 		*combinedConfig.Output != config.ConfigOutputTypeNone,
 		*combinedConfig.DryRun,
+		combinedConfig.Lua, combinedConfig.Js,
 	)
 	_ = utilsErr.MustHandle(err,
 		utilsErr.OnType(func(err types.ProxyDialError) error {
 			fmt.Fprintln(os.Stderr, config.StyleRed.Render("[PROXY] ")+err.Error())
+			os.Exit(1)
+			return nil
+		}),
+		utilsErr.OnSentinel(types.ErrScriptEmpty, func(err error) error {
+			fmt.Fprintln(os.Stderr, config.StyleRed.Render("[SCRIPT] ")+err.Error())
+			os.Exit(1)
+			return nil
+		}),
+		utilsErr.OnType(func(err types.ScriptLoadError) error {
+			fmt.Fprintln(os.Stderr, config.StyleRed.Render("[SCRIPT] ")+err.Error())
 			os.Exit(1)
 			return nil
 		}),

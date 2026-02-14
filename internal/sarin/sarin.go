@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/valyala/fasthttp"
+	"go.aykhans.me/sarin/internal/script"
 	"go.aykhans.me/sarin/internal/types"
 )
 
@@ -52,11 +53,14 @@ type sarin struct {
 	hostClients []*fasthttp.HostClient
 	responses   *SarinResponseData
 	fileCache   *FileCache
+	scriptChain *script.Chain
 }
 
 // NewSarin creates a new sarin instance for load testing.
 // It can return the following errors:
-// - types.ProxyDialError
+//   - types.ProxyDialError
+//   - types.ErrScriptEmpty
+//   - types.ScriptLoadError
 func NewSarin(
 	ctx context.Context,
 	methods []string,
@@ -75,6 +79,8 @@ func NewSarin(
 	values []string,
 	collectStats bool,
 	dryRun bool,
+	luaScripts []string,
+	jsScripts []string,
 ) (*sarin, error) {
 	if workers == 0 {
 		workers = 1
@@ -84,6 +90,19 @@ func NewSarin(
 	if err != nil {
 		return nil, err
 	}
+
+	// Load script sources
+	luaSources, err := script.LoadSources(ctx, luaScripts, script.EngineTypeLua)
+	if err != nil {
+		return nil, err
+	}
+
+	jsSources, err := script.LoadSources(ctx, jsScripts, script.EngineTypeJavaScript)
+	if err != nil {
+		return nil, err
+	}
+
+	scriptChain := script.NewChain(luaSources, jsSources)
 
 	srn := &sarin{
 		workers:        workers,
@@ -103,6 +122,7 @@ func NewSarin(
 		dryRun:         dryRun,
 		hostClients:    hostClients,
 		fileCache:      NewFileCache(time.Second * 10),
+		scriptChain:    scriptChain,
 	}
 
 	if collectStats {
@@ -193,7 +213,21 @@ func (q sarin) Worker(
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
-	requestGenerator, isDynamic := NewRequestGenerator(q.methods, q.requestURL, q.params, q.headers, q.cookies, q.bodies, q.values, q.fileCache)
+	// Create script transformer for this worker (engines are not thread-safe)
+	// Scripts are pre-validated in NewSarin, so this should not fail
+	var scriptTransformer *script.Transformer
+	if !q.scriptChain.IsEmpty() {
+		var err error
+		scriptTransformer, err = q.scriptChain.NewTransformer()
+		if err != nil {
+			panic(err)
+		}
+		defer scriptTransformer.Close()
+	}
+
+	requestGenerator, isDynamic := NewRequestGenerator(
+		q.methods, q.requestURL, q.params, q.headers, q.cookies, q.bodies, q.values, q.fileCache, scriptTransformer,
+	)
 
 	if q.dryRun {
 		switch {

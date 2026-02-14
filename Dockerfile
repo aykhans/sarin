@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.25.5
+ARG GO_VERSION=1.26.0
 
 FROM docker.io/library/golang:${GO_VERSION}-alpine AS builder
 
@@ -12,7 +12,7 @@ RUN --mount=type=bind,source=./go.mod,target=./go.mod \
     go mod download
 
 RUN --mount=type=bind,source=./,target=./ \
-    CGO_ENABLED=0 GOEXPERIMENT=greenteagc go build \
+    CGO_ENABLED=0 go build \
     -ldflags "-X 'go.aykhans.me/sarin/internal/version.Version=${VERSION}' \
     -X 'go.aykhans.me/sarin/internal/version.GitCommit=${GIT_COMMIT}' \
     -X 'go.aykhans.me/sarin/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \

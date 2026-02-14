@@ -3,7 +3,6 @@ package sarin
 import (
 	"bytes"
 	"encoding/base64"
-	"errors"
 	"math/rand/v2"
 	"mime/multipart"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
+	"go.aykhans.me/sarin/internal/types"
 )
 
 func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) template.FuncMap {
@@ -90,7 +90,7 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		//        {{ file_Base64 "https://example.com/image.png" }}
 		"file_Base64": func(source string) (string, error) {
 			if fileCache == nil {
-				return "", errors.New("file cache is not initialized")
+				return "", types.ErrFileCacheNotInitialized
 			}
 			cached, err := fileCache.GetOrLoad(source)
 			if err != nil {
@@ -582,7 +582,7 @@ func NewDefaultBodyTemplateFuncMap(
 		//   {{ body_FormData "name" "John" "avatar" "@/path/to/photo.jpg" "doc" "@https://example.com/file.pdf" }}
 		funcMap["body_FormData"] = func(pairs ...string) (string, error) {
 			if len(pairs)%2 != 0 {
-				return "", errors.New("body_FormData requires an even number of arguments (key-value pairs)")
+				return "", types.ErrFormDataOddArgs
 			}
 
 			var multipartData bytes.Buffer
@@ -602,7 +602,7 @@ func NewDefaultBodyTemplateFuncMap(
 				case strings.HasPrefix(val, "@"):
 					// File (local path or remote URL)
 					if fileCache == nil {
-						return "", errors.New("file cache is not initialized")
+						return "", types.ErrFileCacheNotInitialized
 					}
 					source := val[1:]
 					cached, err := fileCache.GetOrLoad(source)

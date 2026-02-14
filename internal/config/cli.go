@@ -10,27 +10,13 @@ import (
 
 	"go.aykhans.me/sarin/internal/types"
 	versionpkg "go.aykhans.me/sarin/internal/version"
-	"go.aykhans.me/utils/common"
 )
 
 const cliUsageText = `Usage:
   sarin [flags]
 
 Simple usage:
-  sarin -U https://example.com -d 1m
-
-Usage with all flags:
-  sarin -s -q -z -o json -f ./config.yaml -c 50 -r 100_000 -d 2m30s \
-    -U https://example.com \
-    -M POST \
-    -V "sharedUUID={{ fakeit_UUID }}" \
-    -B '{"product": "car"}' \
-    -P "id={{ .Values.sharedUUID }}" \
-    -H "User-Agent: {{ fakeit_UserAgent }}" -H "Accept: */*" \
-    -C "token={{ .Values.sharedUUID }}" \
-    -X "http://proxy.example.com" \
-    -T 3s \
-    -I
+  sarin -U https://example.com -r 1
 
 Flags:
   General Config:
@@ -55,7 +41,9 @@ Flags:
     -X, -proxy         []string   Proxy for the request (e.g. "http://proxy.example.com:8080")
     -V, -values        []string   List of values for templating (e.g. "key1=value1")
     -T, -timeout       time       Timeout for the request (e.g. 400ms, 3s, 1m10s) (default %v)
-    -I, -insecure      bool       Skip SSL/TLS certificate verification (default %v)`
+    -I, -insecure      bool       Skip SSL/TLS certificate verification (default %v)
+        -lua           []string   Lua script for request transformation (inline or @file/@url)
+        -js            []string   JavaScript script for request transformation (inline or @file/@url)`
 
 var _ IParser = ConfigCLIParser{}
 
@@ -106,16 +94,18 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		dryRun       bool
 
 		// Request config
-		urlInput string
-		methods  = stringSliceArg{}
-		bodies   = stringSliceArg{}
-		params   = stringSliceArg{}
-		headers  = stringSliceArg{}
-		cookies  = stringSliceArg{}
-		proxies  = stringSliceArg{}
-		values   = stringSliceArg{}
-		timeout  time.Duration
-		insecure bool
+		urlInput   string
+		methods    = stringSliceArg{}
+		bodies     = stringSliceArg{}
+		params     = stringSliceArg{}
+		headers    = stringSliceArg{}
+		cookies    = stringSliceArg{}
+		proxies    = stringSliceArg{}
+		values     = stringSliceArg{}
+		timeout    time.Duration
+		insecure   bool
+		luaScripts = stringSliceArg{}
+		jsScripts  = stringSliceArg{}
 	)
 
 	{
@@ -177,6 +167,10 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 
 		flagSet.BoolVar(&insecure, "insecure", false, "Skip SSL/TLS certificate verification")
 		flagSet.BoolVar(&insecure, "I", false, "Skip SSL/TLS certificate verification")
+
+		flagSet.Var(&luaScripts, "lua", "Lua script for request transformation (inline or @file/@url)")
+
+		flagSet.Var(&jsScripts, "js", "JavaScript script for request transformation (inline or @file/@url)")
 	}
 
 	// Parse the specific arguments provided to the parser, skipping the program name.
@@ -207,23 +201,23 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		switch flagVar.Name {
 		// General config
 		case "show-config", "s":
-			config.ShowConfig = common.ToPtr(showConfig)
+			config.ShowConfig = new(showConfig)
 		case "config-file", "f":
 			for _, configFile := range configFiles {
 				config.Files = append(config.Files, *types.ParseConfigFile(configFile))
 			}
 		case "concurrency", "c":
-			config.Concurrency = common.ToPtr(concurrency)
+			config.Concurrency = new(concurrency)
 		case "requests", "r":
-			config.Requests = common.ToPtr(requestCount)
+			config.Requests = new(requestCount)
 		case "duration", "d":
-			config.Duration = common.ToPtr(duration)
+			config.Duration = new(duration)
 		case "quiet", "q":
-			config.Quiet = common.ToPtr(quiet)
+			config.Quiet = new(quiet)
 		case "output", "o":
-			config.Output = common.ToPtr(ConfigOutputType(output))
+			config.Output = new(ConfigOutputType(output))
 		case "dry-run", "z":
-			config.DryRun = common.ToPtr(dryRun)
+			config.DryRun = new(dryRun)
 
 		// Request config
 		case "url", "U":
@@ -256,9 +250,13 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		case "values", "V":
 			config.Values = append(config.Values, values...)
 		case "timeout", "T":
-			config.Timeout = common.ToPtr(timeout)
+			config.Timeout = new(timeout)
 		case "insecure", "I":
-			config.Insecure = common.ToPtr(insecure)
+			config.Insecure = new(insecure)
+		case "lua":
+			config.Lua = append(config.Lua, luaScripts...)
+		case "js":
+			config.Js = append(config.Js, jsScripts...)
 		}
 	})
 

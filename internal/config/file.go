@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"go.aykhans.me/sarin/internal/types"
-	"go.aykhans.me/utils/common"
 	"go.yaml.in/yaml/v4"
 )
 
@@ -49,6 +48,10 @@ func (parser ConfigFileParser) Parse() (*Config, error) {
 }
 
 // fetchFile retrieves file contents from a local path or HTTP/HTTPS URL.
+// It can return the following errors:
+//   - types.FileReadError
+//   - types.HTTPFetchError
+//   - types.HTTPStatusError
 func fetchFile(ctx context.Context, src string) ([]byte, error) {
 	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
 		return fetchHTTP(ctx, src)
@@ -57,25 +60,28 @@ func fetchFile(ctx context.Context, src string) ([]byte, error) {
 }
 
 // fetchHTTP downloads file contents from an HTTP/HTTPS URL.
+// It can return the following errors:
+//   - types.HTTPFetchError
+//   - types.HTTPStatusError
 func fetchHTTP(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, types.NewHTTPFetchError(url, err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch file: %w", err)
+		return nil, types.NewHTTPFetchError(url, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch file: HTTP %d %s", resp.StatusCode, resp.Status)
+		return nil, types.NewHTTPStatusError(url, resp.StatusCode, resp.Status)
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, types.NewHTTPFetchError(url, err)
 	}
 
 	return data, nil
@@ -83,19 +89,21 @@ func fetchHTTP(ctx context.Context, url string) ([]byte, error) {
 
 // fetchLocal reads file contents from the local filesystem.
 // It resolves relative paths from the current working directory.
+// It can return the following errors:
+//   - types.FileReadError
 func fetchLocal(src string) ([]byte, error) {
 	path := src
 	if !filepath.IsAbs(src) {
 		pwd, err := os.Getwd()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get working directory: %w", err)
+			return nil, types.NewFileReadError(src, err)
 		}
 		path = filepath.Join(pwd, src)
 	}
 
 	data, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, types.NewFileReadError(path, err)
 	}
 
 	return data, nil
@@ -202,6 +210,8 @@ type configYAML struct {
 	Bodies       stringOrSliceField `yaml:"body"`
 	Proxies      stringOrSliceField `yaml:"proxy"`
 	Values       stringOrSliceField `yaml:"values"`
+	Lua          stringOrSliceField `yaml:"lua"`
+	Js           stringOrSliceField `yaml:"js"`
 }
 
 // ParseYAML parses YAML config file arguments into a Config object.
@@ -230,7 +240,7 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 	config.Quiet = parsedData.Quiet
 
 	if parsedData.Output != nil {
-		config.Output = common.ToPtr(ConfigOutputType(*parsedData.Output))
+		config.Output = new(ConfigOutputType(*parsedData.Output))
 	}
 
 	config.Insecure = parsedData.Insecure
@@ -246,6 +256,8 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 	}
 	config.Bodies = append(config.Bodies, parsedData.Bodies...)
 	config.Values = append(config.Values, parsedData.Values...)
+	config.Lua = append(config.Lua, parsedData.Lua...)
+	config.Js = append(config.Js, parsedData.Js...)
 
 	if len(parsedData.ConfigFiles) > 0 {
 		for _, configFile := range parsedData.ConfigFiles {

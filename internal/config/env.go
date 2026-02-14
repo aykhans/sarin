@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"go.aykhans.me/sarin/internal/types"
-	"go.aykhans.me/utils/common"
 	utilsParse "go.aykhans.me/utils/parser"
 )
 
@@ -67,7 +66,7 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 	}
 
 	if output := parser.getEnv("OUTPUT"); output != "" {
-		config.Output = common.ToPtr(ConfigOutputType(output))
+		config.Output = new(ConfigOutputType(output))
 	}
 
 	if insecure := parser.getEnv("INSECURE"); insecure != "" {
@@ -214,6 +213,14 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 
 	if values := parser.getEnv("VALUES"); values != "" {
 		config.Values = []string{values}
+	}
+
+	if lua := parser.getEnv("LUA"); lua != "" {
+		config.Lua = []string{lua}
+	}
+
+	if js := parser.getEnv("JS"); js != "" {
+		config.Js = []string{js}
 	}
 
 	if len(fieldParseErrors) > 0 {

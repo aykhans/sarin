@@ -36,6 +36,8 @@ Use `-s` or `--show-config` to see the final merged configuration before sending
 | [Cookies](#cookies)         | `cookies`<br>(object)               | `-cookie` / `-C`<br>(string / []string)      | `SARIN_COOKIE`<br>(string)       | -       | HTTP cookies                 |
 | [Proxy](#proxy)             | `proxy`<br>(string / []string)      | `-proxy` / `-X`<br>(string / []string)       | `SARIN_PROXY`<br>(string)        | -       | Proxy URL(s)                 |
 | [Values](#values)           | `values`<br>(string / []string)     | `-values` / `-V`<br>(string / []string)      | `SARIN_VALUES`<br>(string)       | -       | Template values (key=value)  |
+| [Lua](#lua)                 | `lua`<br>(string / []string)        | `-lua`<br>(string / []string)                | `SARIN_LUA`<br>(string)          | -       | Lua script(s)                |
+| [Js](#js)                   | `js`<br>(string / []string)         | `-js`<br>(string / []string)                 | `SARIN_JS`<br>(string)           | -       | JavaScript script(s)         |
 
 ---
 
@@ -373,4 +375,134 @@ values: |
 
 ```sh
 SARIN_VALUES="key1=value1"
+```
+
+## Lua
+
+Lua script(s) for request transformation. Each script must define a global `transform` function that receives a request object and returns the modified request object. Scripts run after template rendering, before the request is sent.
+
+If multiple Lua scripts are provided, they are chained in order—the output of one becomes the input to the next. When both Lua and JavaScript scripts are specified, all Lua scripts run first, then all JavaScript scripts.
+
+**Script sources:**
+
+Scripts can be provided as:
+
+- **Inline script:** Direct script code
+- **File reference:** `@/path/to/script.lua` or `@./relative/path.lua`
+- **URL reference:** `@http://...` or `@https://...`
+- **Escaped `@`:** `@@...` for inline scripts that start with a literal `@`
+
+**The `transform` function:**
+
+```lua
+function transform(req)
+    -- req.method   (string)                    - HTTP method (e.g. "GET", "POST")
+    -- req.path     (string)                    - URL path (e.g. "/api/users")
+    -- req.body     (string)                    - Request body
+    -- req.headers  (table of string/arrays)    - HTTP headers (e.g. {["X-Key"] = "value"})
+    -- req.params   (table of string/arrays)    - Query parameters (e.g. {["id"] = "123"})
+    -- req.cookies  (table of string/arrays)    - Cookies (e.g. {["session"] = "abc"})
+
+    req.headers["X-Custom"] = "my-value"
+    return req
+end
+```
+
+> **Note:** Header, parameter, and cookie values can be a single string or a table (array) for multiple values per key (e.g. `{"val1", "val2"}`).
+
+**YAML example:**
+
+```yaml
+lua: |
+    function transform(req)
+        req.headers["X-Custom"] = "my-value"
+        return req
+    end
+
+# OR
+
+lua:
+    - "@/path/to/script1.lua"
+    - "@/path/to/script2.lua"
+```
+
+**CLI example:**
+
+```sh
+-lua 'function transform(req) req.headers["X-Custom"] = "my-value" return req end'
+
+# OR
+
+-lua @/path/to/script1.lua -lua @/path/to/script2.lua
+```
+
+**ENV example:**
+
+```sh
+SARIN_LUA='function transform(req) req.headers["X-Custom"] = "my-value" return req end'
+```
+
+## Js
+
+JavaScript script(s) for request transformation. Each script must define a global `transform` function that receives a request object and returns the modified request object. Scripts run after template rendering, before the request is sent.
+
+If multiple JavaScript scripts are provided, they are chained in order—the output of one becomes the input to the next. When both Lua and JavaScript scripts are specified, all Lua scripts run first, then all JavaScript scripts.
+
+**Script sources:**
+
+Scripts can be provided as:
+
+- **Inline script:** Direct script code
+- **File reference:** `@/path/to/script.js` or `@./relative/path.js`
+- **URL reference:** `@http://...` or `@https://...`
+- **Escaped `@`:** `@@...` for inline scripts that start with a literal `@`
+
+**The `transform` function:**
+
+```javascript
+function transform(req) {
+    // req.method   (string)                    - HTTP method (e.g. "GET", "POST")
+    // req.path     (string)                    - URL path (e.g. "/api/users")
+    // req.body     (string)                    - Request body
+    // req.headers  (object of string/arrays)   - HTTP headers (e.g. {"X-Key": "value"})
+    // req.params   (object of string/arrays)   - Query parameters (e.g. {"id": "123"})
+    // req.cookies  (object of string/arrays)   - Cookies (e.g. {"session": "abc"})
+
+    req.headers["X-Custom"] = "my-value";
+    return req;
+}
+```
+
+> **Note:** Header, parameter, and cookie values can be a single string or an array for multiple values per key (e.g. `["val1", "val2"]`).
+
+**YAML example:**
+
+```yaml
+js: |
+    function transform(req) {
+        req.headers["X-Custom"] = "my-value";
+        return req;
+    }
+
+# OR
+
+js:
+    - "@/path/to/script1.js"
+    - "@/path/to/script2.js"
+```
+
+**CLI example:**
+
+```sh
+-js 'function transform(req) { req.headers["X-Custom"] = "my-value"; return req; }'
+
+# OR
+
+-js @/path/to/script1.js -js @/path/to/script2.js
+```
+
+**ENV example:**
+
+```sh
+SARIN_JS='function transform(req) { req.headers["X-Custom"] = "my-value"; return req; }'
 ```

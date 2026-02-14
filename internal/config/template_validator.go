@@ -8,6 +8,8 @@ import (
 	"go.aykhans.me/sarin/internal/types"
 )
 
+// It can return the following errors:
+//   - types.TemplateParseError
 func validateTemplateString(value string, funcMap template.FuncMap) error {
 	if value == "" {
 		return nil
@@ -15,7 +17,7 @@ func validateTemplateString(value string, funcMap template.FuncMap) error {
 
 	_, err := template.New("").Funcs(funcMap).Parse(value)
 	if err != nil {
-		return fmt.Errorf("template parse error: %w", err)
+		return types.NewTemplateParseError(err)
 	}
 
 	return nil

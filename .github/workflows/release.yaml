@@ -35,7 +35,7 @@ jobs:
         run: |
           echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
           echo "GIT_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
-          echo "GO_VERSION=1.25.5" >> $GITHUB_ENV
+          echo "GO_VERSION=1.26.0" >> $GITHUB_ENV
 
       - name: Set up Go
         if: github.event_name == 'release' || inputs.build_binaries
@@ -53,12 +53,12 @@ jobs:
                    -X 'go.aykhans.me/sarin/internal/version.GoVersion=$(go version)' \
                    -s -w"
 
-          CGO_ENABLED=0 GOEXPERIMENT=greenteagc GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ./sarin-linux-amd64 ./cmd/cli/main.go
-          CGO_ENABLED=0 GOEXPERIMENT=greenteagc GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ./sarin-linux-arm64 ./cmd/cli/main.go
-          CGO_ENABLED=0 GOEXPERIMENT=greenteagc GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ./sarin-darwin-amd64 ./cmd/cli/main.go
-          CGO_ENABLED=0 GOEXPERIMENT=greenteagc GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ./sarin-darwin-arm64 ./cmd/cli/main.go
-          CGO_ENABLED=0 GOEXPERIMENT=greenteagc GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ./sarin-windows-amd64.exe ./cmd/cli/main.go
-          CGO_ENABLED=0 GOEXPERIMENT=greenteagc GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ./sarin-windows-arm64.exe ./cmd/cli/main.go
+          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ./sarin-linux-amd64 ./cmd/cli/main.go
+          CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ./sarin-linux-arm64 ./cmd/cli/main.go
+          CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ./sarin-darwin-amd64 ./cmd/cli/main.go
+          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ./sarin-darwin-arm64 ./cmd/cli/main.go
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ./sarin-windows-amd64.exe ./cmd/cli/main.go
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ./sarin-windows-arm64.exe ./cmd/cli/main.go
 
       - name: Upload Release Assets
         if: github.event_name == 'release' || inputs.build_binaries

@@ -22,13 +22,14 @@
 
 Sarin is designed for efficient HTTP load testing with minimal resource consumption. It prioritizes simplicity—features like templating add zero overhead when unused.
 
-| ✅ Supported                                               | ❌ Not Supported                  |
-| ---------------------------------------------------------- | --------------------------------- |
-| High-performance with low memory footprint                 | Detailed response body analysis   |
-| Long-running duration/count based tests                    | Extensive response statistics     |
-| Dynamic requests via 320+ template functions               | Web UI or complex TUI             |
-| Multiple proxy protocols<br>(HTTP, HTTPS, SOCKS5, SOCKS5H) | Scripting or multi-step scenarios |
-| Flexible config (CLI, ENV, YAML)                           | HTTP/2, HTTP/3, WebSocket, gRPC   |
+| ✅ Supported                                               | ❌ Not Supported                |
+| ---------------------------------------------------------- | ------------------------------- |
+| High-performance with low memory footprint                 | Detailed response body analysis |
+| Long-running duration/count based tests                    | Extensive response statistics   |
+| Dynamic requests via 320+ template functions               | Web UI or complex TUI           |
+| Request scripting with Lua and JavaScript                  | Distributed load testing        |
+| Multiple proxy protocols<br>(HTTP, HTTPS, SOCKS5, SOCKS5H) | HTTP/2, HTTP/3, WebSocket, gRPC |
+| Flexible config (CLI, ENV, YAML)                           | Plugins / extensions ecosystem  |
 
 ## Installation
 
@@ -56,12 +57,12 @@ Download the latest binaries from the [releases](https://github.com/aykhans/sari
 
 ### Building from Source
 
-Requires [Go 1.25+](https://golang.org/dl/).
+Requires [Go 1.26+](https://golang.org/dl/).
 
 ```sh
 git clone https://github.com/aykhans/sarin.git && cd sarin
 
-CGO_ENABLED=0 GOEXPERIMENT=greenteagc go build \
+CGO_ENABLED=0 go build \
     -ldflags "-X 'go.aykhans.me/sarin/internal/version.Version=dev' \
     -X 'go.aykhans.me/sarin/internal/version.GitCommit=$(git rev-parse HEAD)' \
     -X 'go.aykhans.me/sarin/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \
