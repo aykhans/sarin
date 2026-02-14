@@ -134,19 +134,33 @@ headers:
 
 </details>
 
-**Random headers from multiple values:**
+**Multiple values for the same header (all sent in every request):**
 
-> **Note:** When multiple values are provided for the same header, Sarin starts at a random index and cycles through all values in order. Once the cycle completes, it picks a new random starting point. This ensures all values are used while maintaining some randomness.
+> **Note:** When the same key appears as separate entries (in CLI or config file), all values are sent in every request.
 
 ```sh
 sarin -U http://example.com -r 1000 -c 10 \
   -H "X-Region: us-east" \
-  -H "X-Region: us-west" \
-  -H "X-Region: eu-central"
+  -H "X-Region: us-west"
 ```
 
 <details>
 <summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com
+requests: 1000
+concurrency: 10
+headers:
+    - X-Region: us-east
+    - X-Region: us-west
+```
+
+</details>
+
+**Cycling headers from multiple values (config file only):**
+
+> **Note:** When multiple values are specified as an array on a single key, Sarin starts at a random index and cycles through all values in order. Once the cycle completes, it picks a new random starting point.
 
 ```yaml
 url: http://example.com
@@ -158,8 +172,6 @@ headers:
         - us-west
         - eu-central
 ```
-
-</details>
 
 **Query parameters:**
 
