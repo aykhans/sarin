@@ -536,12 +536,6 @@ func ReadAllConfigs() *Config {
 	cliParser := NewConfigCLIParser(os.Args)
 	cliConf, err := cliParser.Parse()
 	_ = utilsErr.MustHandle(err,
-		utilsErr.OnSentinel(types.ErrCLINoArgs, func(err error) error {
-			cliParser.PrintHelp()
-			fmt.Fprintln(os.Stderr, StyleYellow.Render("\nNo arguments provided."))
-			os.Exit(1)
-			return nil
-		}),
 		utilsErr.OnType(func(err types.CLIUnexpectedArgsError) error {
 			cliParser.PrintHelp()
 			fmt.Fprintln(os.Stderr,

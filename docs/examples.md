@@ -824,19 +824,19 @@ quiet: true
 **Basic Docker usage:**
 
 ```sh
-docker run --rm aykhans/sarin -U http://example.com -r 1000 -c 10
+docker run -it --rm aykhans/sarin -U http://example.com -r 1000 -c 10
 ```
 
 **With local config file:**
 
 ```sh
-docker run --rm -v $(pwd)/config.yaml:/config.yaml aykhans/sarin -f /config.yaml
+docker run -it --rm -v $(pwd)/config.yaml:/config.yaml aykhans/sarin -f /config.yaml
 ```
 
 **With remote config file:**
 
 ```sh
-docker run --rm aykhans/sarin -f https://example.com/config.yaml
+docker run -it --rm aykhans/sarin -f https://example.com/config.yaml
 ```
 
 **Interactive mode with TTY:**

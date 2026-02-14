@@ -98,16 +98,16 @@ sarin -U http://example.com/users \
 | `strings_Truncate(s string, n int)`                        | Truncate to `n` characters with ellipsis                            | `{{ strings_Truncate "hello world" 5 }}` → `hello...`     |
 | `strings_TrimPrefix(s string, prefix string)`              | Remove prefix from string                                           | `{{ strings_TrimPrefix "hello" "he" }}` → `llo`           |
 | `strings_TrimSuffix(s string, suffix string)`              | Remove suffix from string                                           | `{{ strings_TrimSuffix "hello" "lo" }}` → `hel`           |
-| `strings_Join(sep string, values ...string)`               | Join strings with separator                                         | `{{ strings_Join "-" "a" "b" "c" }}` → `a-b-c`            |
 
 ### Collection Functions
 
-| Function                      | Description                                   | Example                                      |
-| ----------------------------- | --------------------------------------------- | -------------------------------------------- |
-| `dict_Str(pairs ...string)`   | Create string dictionary from key-value pairs | `{{ dict_Str "key1" "val1" "key2" "val2" }}` |
-| `slice_Str(values ...string)` | Create string slice                           | `{{ slice_Str "a" "b" "c" }}`                |
-| `slice_Int(values ...int)`    | Create int slice                              | `{{ slice_Int 1 2 3 }}`                      |
-| `slice_Uint(values ...uint)`  | Create uint slice                             | `{{ slice_Uint 1 2 3 }}`                     |
+| Function                                 | Description                                   | Example                                                  |
+| ---------------------------------------- | --------------------------------------------- | -------------------------------------------------------- |
+| `dict_Str(pairs ...string)`              | Create string dictionary from key-value pairs | `{{ dict_Str "key1" "val1" "key2" "val2" }}`             |
+| `slice_Str(values ...string)`            | Create string slice                           | `{{ slice_Str "a" "b" "c" }}`                            |
+| `slice_Join(slice []string, sep string)` | Join string slice with separator              | `{{ slice_Join (slice_Str "a" "b" "c") "-" }}` → `a-b-c` |
+| `slice_Int(values ...int)`               | Create int slice                              | `{{ slice_Int 1 2 3 }}`                                  |
+| `slice_Uint(values ...uint)`             | Create uint slice                             | `{{ slice_Uint 1 2 3 }}`                                 |
 
 ### Body Functions
 
