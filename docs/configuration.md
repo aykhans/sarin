@@ -105,6 +105,12 @@ SARIN_CONFIG_FILE=/config1.yaml sarin -f /config2.yaml -f https://example.com/co
 
 If all four files define `url`, the value from `config3.yaml` wins.
 
+**Merge behavior by field:**
+
+- **Scalar fields** (`url`, `requests`, `duration`, `timeout`, `concurrency`, etc.) — higher priority overrides lower priority
+- **Method and Body** — higher priority overrides lower priority (no merging)
+- **Headers, Params, Cookies, Proxies, Values, Lua, and Js** — accumulated across all config files
+
 ## URL
 
 Target URL. Must be HTTP or HTTPS. The URL path supports [templating](templating.md), allowing dynamic path generation per request.

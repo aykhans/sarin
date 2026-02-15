@@ -239,24 +239,24 @@ These functions are powered by [gofakeit](https://github.com/brianvoe/gofakeit) 
 
 ### Address
 
-| Function                                            | Description                  | Example Output                                      |
-| --------------------------------------------------- | ---------------------------- | --------------------------------------------------- |
-| `fakeit_City`                                       | City name                    | `"Marcelside"`                                      |
-| `fakeit_Country`                                    | Country name                 | `"United States of America"`                        |
-| `fakeit_CountryAbr`                                 | Country abbreviation         | `"US"`                                              |
-| `fakeit_State`                                      | State name                   | `"Illinois"`                                        |
-| `fakeit_StateAbr`                                   | State abbreviation           | `"IL"`                                              |
-| `fakeit_Street`                                     | Full street                  | `"364 East Rapidsborough"`                          |
-| `fakeit_StreetName`                                 | Street name                  | `"View"`                                            |
-| `fakeit_StreetNumber`                               | Street number                | `"13645"`                                           |
-| `fakeit_StreetPrefix`                               | Street prefix                | `"East"`                                            |
-| `fakeit_StreetSuffix`                               | Street suffix                | `"Ave"`                                             |
-| `fakeit_Unit`                                       | Unit                         | `"Apt 123"`                                         |
-| `fakeit_Zip`                                        | ZIP code                     | `"13645"`                                           |
-| `fakeit_Latitude`                                   | Random latitude              | `-73.534056`                                        |
-| `fakeit_Longitude`                                  | Random longitude             | `-147.068112`                                       |
-| `fakeit_LatitudeInRange(min float64, max float64)`  | Latitude in specified range  | `{{ fakeit_LatitudeInRange 0 90 }}` → `22.921026`   |
-| `fakeit_LongitudeInRange(min float64, max float64)` | Longitude in specified range | `{{ fakeit_LongitudeInRange 0 180 }}` → `-8.170450` |
+| Function                                            | Description                  | Example Output                                       |
+| --------------------------------------------------- | ---------------------------- | ---------------------------------------------------- |
+| `fakeit_City`                                       | City name                    | `"Marcelside"`                                       |
+| `fakeit_Country`                                    | Country name                 | `"United States of America"`                         |
+| `fakeit_CountryAbr`                                 | Country abbreviation         | `"US"`                                               |
+| `fakeit_State`                                      | State name                   | `"Illinois"`                                         |
+| `fakeit_StateAbr`                                   | State abbreviation           | `"IL"`                                               |
+| `fakeit_Street`                                     | Full street                  | `"364 East Rapidsborough"`                           |
+| `fakeit_StreetName`                                 | Street name                  | `"View"`                                             |
+| `fakeit_StreetNumber`                               | Street number                | `"13645"`                                            |
+| `fakeit_StreetPrefix`                               | Street prefix                | `"East"`                                             |
+| `fakeit_StreetSuffix`                               | Street suffix                | `"Ave"`                                              |
+| `fakeit_Unit`                                       | Unit                         | `"Apt 123"`                                          |
+| `fakeit_Zip`                                        | ZIP code                     | `"13645"`                                            |
+| `fakeit_Latitude`                                   | Random latitude              | `-73.534056`                                         |
+| `fakeit_Longitude`                                  | Random longitude             | `-147.068112`                                        |
+| `fakeit_LatitudeInRange(min float64, max float64)`  | Latitude in specified range  | `{{ fakeit_LatitudeInRange 0 90 }}` → `22.921026`    |
+| `fakeit_LongitudeInRange(min float64, max float64)` | Longitude in specified range | `{{ fakeit_LongitudeInRange 0 180 }}` → `122.471830` |
 
 ### Game
 
@@ -343,16 +343,16 @@ These functions are powered by [gofakeit](https://github.com/brianvoe/gofakeit) 
 
 ### Text
 
-| Function                                                                                 | Description                                     | Example                                       |
-| ---------------------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------- |
-| `fakeit_Sentence`                                                                        | Random sentence                                 | `{{ fakeit_Sentence }}`                       |
-| `fakeit_Paragraph`                                                                       | Random paragraph                                | `{{ fakeit_Paragraph }}`                      |
-| `fakeit_LoremIpsumWord`                                                                  | Lorem ipsum word                                | `"lorem"`                                     |
-| `fakeit_LoremIpsumSentence(wordCount int)`                                               | Lorem ipsum sentence with specified word count  | `{{ fakeit_LoremIpsumSentence 5 }}`           |
-| `fakeit_LoremIpsumParagraph(paragraphs int, sentences int, words int, separator string)` | Lorem ipsum paragraphs with specified structure | `{{ fakeit_LoremIpsumParagraph 1 3 5 "\n" }}` |
-| `fakeit_Question`                                                                        | Random question                                 | `"What is your name?"`                        |
-| `fakeit_Quote`                                                                           | Random quote                                    | `"Life is what happens..."`                   |
-| `fakeit_Phrase`                                                                          | Random phrase                                   | `"a piece of cake"`                           |
+| Function                                                                                 | Description                                     | Example                                               |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------- |
+| `fakeit_Sentence(wordCount ...int)`                                                      | Random sentence (optional word count)           | `{{ fakeit_Sentence }}` or `{{ fakeit_Sentence 10 }}` |
+| `fakeit_Paragraph`                                                                       | Random paragraph                                | `{{ fakeit_Paragraph }}`                              |
+| `fakeit_LoremIpsumWord`                                                                  | Lorem ipsum word                                | `"lorem"`                                             |
+| `fakeit_LoremIpsumSentence(wordCount int)`                                               | Lorem ipsum sentence with specified word count  | `{{ fakeit_LoremIpsumSentence 5 }}`                   |
+| `fakeit_LoremIpsumParagraph(paragraphs int, sentences int, words int, separator string)` | Lorem ipsum paragraphs with specified structure | `{{ fakeit_LoremIpsumParagraph 1 3 5 "\n" }}`         |
+| `fakeit_Question`                                                                        | Random question                                 | `"What is your name?"`                                |
+| `fakeit_Quote`                                                                           | Random quote                                    | `"Life is what happens..."`                           |
+| `fakeit_Phrase`                                                                          | Random phrase                                   | `"a piece of cake"`                                   |
 
 ### Foods
 

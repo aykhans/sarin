@@ -199,7 +199,7 @@ params:
 
 ```sh
 sarin -U http://example.com/users -r 1000 -c 10 \
-  -P "id={{ fakeit_IntRange 1 1000 }}" \
+  -P "id={{ fakeit_Number 1 1000 }}" \
   -P "fields=name,email"
 ```
 
@@ -211,7 +211,7 @@ url: http://example.com/users
 requests: 1000
 concurrency: 10
 params:
-    id: "{{ fakeit_IntRange 1 1000 }}"
+    id: "{{ fakeit_Number 1 1000 }}"
     fields: "name,email"
 ```
 
