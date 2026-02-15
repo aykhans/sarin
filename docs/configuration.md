@@ -105,6 +105,12 @@ SARIN_CONFIG_FILE=/config1.yaml sarin -f /config2.yaml -f https://example.com/co
 
 If all four files define `url`, the value from `config3.yaml` wins.
 
+**Merge behavior by field:**
+
+- **Scalar fields** (`url`, `requests`, `duration`, `timeout`, `concurrency`, etc.) — higher priority overrides lower priority
+- **Method and Body** — higher priority overrides lower priority (no merging)
+- **Headers, Params, Cookies, Proxies, Values, Lua, and Js** — accumulated across all config files
+
 ## URL
 
 Target URL. Must be HTTP or HTTPS. The URL path supports [templating](templating.md), allowing dynamic path generation per request.
@@ -227,26 +233,33 @@ SARIN_BODY='{"product": "car"}'
 
 ## Params
 
-URL query parameters. If multiple values are provided for a key, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
+URL query parameters. Supports [templating](templating.md).
+
+When the same key appears as **separate entries** (in CLI or config file), all values are sent in every request. When multiple values are specified as an **array on a single key** (config file only), Sarin cycles through them.
 
 **YAML example:**
 
 ```yaml
 params:
   key1: value1
-  key2: [value2, value3]
+  key2: [value2, value3]  # cycles between value2 and value3
 
 # OR
 
 params:
   - key1: value1
-  - key2: [value2, value3]
+  - key2: [value2, value3]  # cycles between value2 and value3
+
+# To send both values in every request, use separate entries:
+params:
+  - key2: value2
+  - key2: value3  # both sent in every request
 ```
 
 **CLI example:**
 
 ```sh
--param "key1=value1" -param "key2=value2" -param "key2=value3"
+-param "key1=value1" -param "key2=value2" -param "key2=value3"  # sends both value2 and value3
 ```
 
 **ENV example:**
@@ -257,26 +270,33 @@ SARIN_PARAM="key1=value1"
 
 ## Headers
 
-HTTP headers. If multiple values are provided for a key, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
+HTTP headers. Supports [templating](templating.md).
+
+When the same key appears as **separate entries** (in CLI or config file), all values are sent in every request. When multiple values are specified as an **array on a single key** (config file only), Sarin cycles through them.
 
 **YAML example:**
 
 ```yaml
 headers:
   key1: value1
-  key2: [value2, value3]
+  key2: [value2, value3]  # cycles between value2 and value3
 
 # OR
 
 headers:
   - key1: value1
-  - key2: [value2, value3]
+  - key2: [value2, value3]  # cycles between value2 and value3
+
+# To send both values in every request, use separate entries:
+headers:
+  - key2: value2
+  - key2: value3  # both sent in every request
 ```
 
 **CLI example:**
 
 ```sh
--header "key1: value1" -header "key2: value2" -header "key2: value3"
+-header "key1: value1" -header "key2: value2" -header "key2: value3"  # sends both value2 and value3
 ```
 
 **ENV example:**
@@ -287,26 +307,33 @@ SARIN_HEADER="key1: value1"
 
 ## Cookies
 
-HTTP cookies. If multiple values are provided for a key, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
+HTTP cookies. Supports [templating](templating.md).
+
+When the same key appears as **separate entries** (in CLI or config file), all values are sent in every request. When multiple values are specified as an **array on a single key** (config file only), Sarin cycles through them.
 
 **YAML example:**
 
 ```yaml
 cookies:
   key1: value1
-  key2: [value2, value3]
+  key2: [value2, value3]  # cycles between value2 and value3
 
 # OR
 
 cookies:
   - key1: value1
-  - key2: [value2, value3]
+  - key2: [value2, value3]  # cycles between value2 and value3
+
+# To send both values in every request, use separate entries:
+cookies:
+  - key2: value2
+  - key2: value3  # both sent in every request
 ```
 
 **CLI example:**
 
 ```sh
--cookie "key1=value1" -cookie "key2=value2" -cookie "key2=value3"
+-cookie "key1=value1" -cookie "key2=value2" -cookie "key2=value3"  # sends both value2 and value3
 ```
 
 **ENV example:**

@@ -275,7 +275,7 @@ func (config Config) Print() bool {
 func (config *Config) Merge(newConfig *Config) {
 	config.Files = append(config.Files, newConfig.Files...)
 	if len(newConfig.Methods) > 0 {
-		config.Methods = append(config.Methods, newConfig.Methods...)
+		config.Methods = newConfig.Methods
 	}
 	if newConfig.URL != nil {
 		config.URL = newConfig.URL
@@ -317,7 +317,7 @@ func (config *Config) Merge(newConfig *Config) {
 		config.Cookies = append(config.Cookies, newConfig.Cookies...)
 	}
 	if len(newConfig.Bodies) != 0 {
-		config.Bodies = append(config.Bodies, newConfig.Bodies...)
+		config.Bodies = newConfig.Bodies
 	}
 	if len(newConfig.Proxies) != 0 {
 		config.Proxies.Append(newConfig.Proxies...)
@@ -536,12 +536,6 @@ func ReadAllConfigs() *Config {
 	cliParser := NewConfigCLIParser(os.Args)
 	cliConf, err := cliParser.Parse()
 	_ = utilsErr.MustHandle(err,
-		utilsErr.OnSentinel(types.ErrCLINoArgs, func(err error) error {
-			cliParser.PrintHelp()
-			fmt.Fprintln(os.Stderr, StyleYellow.Render("\nNo arguments provided."))
-			os.Exit(1)
-			return nil
-		}),
 		utilsErr.OnType(func(err types.CLIUnexpectedArgsError) error {
 			cliParser.PrintHelp()
 			fmt.Fprintln(os.Stderr,

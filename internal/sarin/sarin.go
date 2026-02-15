@@ -3,6 +3,7 @@ package sarin
 import (
 	"context"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/term"
 	"github.com/valyala/fasthttp"
 	"go.aykhans.me/sarin/internal/script"
 	"go.aykhans.me/sarin/internal/types"
@@ -154,6 +156,10 @@ func (q sarin) Start(ctx context.Context) {
 	var streamCh chan struct{}
 	var messageChannel chan runtimeMessage
 	var sendMessage messageSender
+
+	if !q.quiet && !term.IsTerminal(os.Stdout.Fd()) {
+		q.quiet = true
+	}
 
 	if q.quiet {
 		sendMessage = func(level runtimeMessageLevel, text string) {}

@@ -15,7 +15,7 @@ func (cookies Cookies) GetValue(key string) *[]string {
 	return nil
 }
 
-func (cookies *Cookies) Append(cookie ...Cookie) {
+func (cookies *Cookies) Merge(cookie ...Cookie) {
 	for _, c := range cookie {
 		if item := cookies.GetValue(c.Key); item != nil {
 			*item = append(*item, c.Value...)
@@ -27,7 +27,7 @@ func (cookies *Cookies) Append(cookie ...Cookie) {
 
 func (cookies *Cookies) Parse(rawValues ...string) {
 	for _, rawValue := range rawValues {
-		cookies.Append(*ParseCookie(rawValue))
+		*cookies = append(*cookies, *ParseCookie(rawValue))
 	}
 }
 

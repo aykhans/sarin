@@ -62,10 +62,6 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		},
 		"strings_TrimPrefix": strings.TrimPrefix,
 		"strings_TrimSuffix": strings.TrimSuffix,
-		"strings_Join": func(sep string, values ...string) string {
-			return strings.Join(values, sep)
-		},
-
 		// Dict
 		"dict_Str": func(values ...string) map[string]string {
 			dict := make(map[string]string)
@@ -83,6 +79,7 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"slice_Str":  func(values ...string) []string { return values },
 		"slice_Int":  func(values ...int) []int { return values },
 		"slice_Uint": func(values ...uint) []uint { return values },
+		"slice_Join": strings.Join,
 
 		// File
 		// file_Base64 reads a file (local or remote URL) and returns its Base64 encoded content.

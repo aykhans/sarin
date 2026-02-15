@@ -250,10 +250,6 @@ func (e TemplateRenderError) Unwrap() error {
 
 // ======================================== CLI ========================================
 
-var (
-	ErrCLINoArgs = errors.New("CLI expects arguments but received none")
-)
-
 type CLIUnexpectedArgsError struct {
 	Args []string
 }

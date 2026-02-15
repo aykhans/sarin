@@ -71,7 +71,6 @@ func (arg *stringSliceArg) Set(value string) error {
 
 // Parse parses command-line arguments into a Config object.
 // It can return the following errors:
-// - types.ErrCLINoArgs
 // - types.CLIUnexpectedArgsError
 // - types.FieldParseErrors
 func (parser ConfigCLIParser) Parse() (*Config, error) {
@@ -176,12 +175,6 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 	// Parse the specific arguments provided to the parser, skipping the program name.
 	if err := flagSet.Parse(parser.args[1:]); err != nil {
 		panic(err)
-	}
-
-	// Check if no flags were set and no non-flag arguments were provided.
-	// This covers cases where `sarin` is run without any meaningful arguments.
-	if flagSet.NFlag() == 0 && len(flagSet.Args()) == 0 {
-		return nil, types.ErrCLINoArgs
 	}
 
 	// Check for any unexpected non-flag arguments remaining after parsing.

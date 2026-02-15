@@ -15,7 +15,7 @@ func (params Params) GetValue(key string) *[]string {
 	return nil
 }
 
-func (params *Params) Append(param ...Param) {
+func (params *Params) Merge(param ...Param) {
 	for _, p := range param {
 		if item := params.GetValue(p.Key); item != nil {
 			*item = append(*item, p.Value...)
@@ -27,7 +27,7 @@ func (params *Params) Append(param ...Param) {
 
 func (params *Params) Parse(rawValues ...string) {
 	for _, rawValue := range rawValues {
-		params.Append(*ParseParam(rawValue))
+		*params = append(*params, *ParseParam(rawValue))
 	}
 }
 

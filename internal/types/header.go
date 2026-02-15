@@ -24,7 +24,7 @@ func (headers Headers) GetValue(key string) *[]string {
 	return nil
 }
 
-func (headers *Headers) Append(header ...Header) {
+func (headers *Headers) Merge(header ...Header) {
 	for _, h := range header {
 		if item := headers.GetValue(h.Key); item != nil {
 			*item = append(*item, h.Value...)
@@ -36,7 +36,7 @@ func (headers *Headers) Append(header ...Header) {
 
 func (headers *Headers) Parse(rawValues ...string) {
 	for _, rawValue := range rawValues {
-		headers.Append(*ParseHeader(rawValue))
+		*headers = append(*headers, *ParseHeader(rawValue))
 	}
 }
 
