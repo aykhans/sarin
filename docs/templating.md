@@ -10,6 +10,8 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
 - [General Functions](#general-functions)
     - [String Functions](#string-functions)
     - [Collection Functions](#collection-functions)
+    - [Time Functions](#time-functions)
+    - [Crypto Functions](#crypto-functions)
     - [Body Functions](#body-functions)
     - [File Functions](#file-functions)
 - [Fake Data Functions](#fake-data-functions)
@@ -109,6 +111,24 @@ sarin -U http://example.com/users \
 | `slice_Int(values ...int)`               | Create int slice                              | `{{ slice_Int 1 2 3 }}`                                  |
 | `slice_Uint(values ...uint)`             | Create uint slice                             | `{{ slice_Uint 1 2 3 }}`                                 |
 
+### Time Functions
+
+| Function                 | Description                                 | Example                                                                         |
+| ------------------------ | ------------------------------------------- | ------------------------------------------------------------------------------- |
+| `time_NowUnix`           | Current Unix timestamp (seconds)            | `{{ time_NowUnix }}` → `1735689600`                                             |
+| `time_NowUnixMilli`      | Current Unix timestamp (milliseconds)       | `{{ time_NowUnixMilli }}` → `1735689600123`                                     |
+| `time_NowRFC3339`        | Current time in RFC3339 format              | `{{ time_NowRFC3339 }}` → `"2026-02-26T21:00:00Z"`                              |
+| `time_Format(layout, t)` | Format a `time.Time` value with a Go layout | `{{ time_Format "2006-01-02" (strings_ToDate "2024-05-10") }}` → `"2024-05-10"` |
+
+### Crypto Functions
+
+| Function                             | Description                                | Example                                      |
+| ------------------------------------ | ------------------------------------------ | -------------------------------------------- |
+| `crypto_SHA256(s string)`            | SHA-256 hash (hex-encoded)                 | `{{ crypto_SHA256 "hello" }}`                |
+| `crypto_MD5(s string)`               | MD5 hash (hex-encoded)                     | `{{ crypto_MD5 "hello" }}`                   |
+| `crypto_HMACSHA256(key, msg string)` | HMAC-SHA256 signature (hex-encoded)        | `{{ crypto_HMACSHA256 "secret" "payload" }}` |
+| `crypto_Base64URL(s string)`         | Base64 URL-safe encoding (without padding) | `{{ crypto_Base64URL "hello world" }}`       |
+
 ### Body Functions
 
 | Function                         | Description                                                                                                                                                                                                 | Example                                                             |
@@ -153,11 +173,18 @@ body: '{{ body_FormData "twitter" "@@username" }}'
 
 | Function                     | Description                                                                                               | Example                                 |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `file_Read(source string)`   | Read a file (local path or URL) and return raw content as string. Files are cached after first read.      | `{{ file_Read "/path/to/file.txt" }}`   |
 | `file_Base64(source string)` | Read a file (local path or URL) and return its Base64 encoded content. Files are cached after first read. | `{{ file_Base64 "/path/to/file.pdf" }}` |
 
-**`file_Base64` Details:**
+**`file_Read` and `file_Base64` Details:**
 
 ```yaml
+# Local file as plain text
+body: '{{ file_Read "/path/to/template.json" }}'
+
+# Remote text file
+body: '{{ file_Read "https://example.com/payload.txt" }}'
+
 # Local file as Base64 in JSON body
 body: '{"file": "{{ file_Base64 "/path/to/document.pdf" }}", "filename": "document.pdf"}'
 
