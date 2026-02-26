@@ -2,7 +2,11 @@ package sarin
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/md5" // #nosec G501 -- exposed intentionally as a template utility helper
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"math/rand/v2"
 	"mime/multipart"
 	"strings"
@@ -81,7 +85,47 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"slice_Uint": func(values ...uint) []uint { return values },
 		"slice_Join": strings.Join,
 
+		// Time
+		"time_NowUnix":      func() int64 { return time.Now().Unix() },
+		"time_NowUnixMilli": func() int64 { return time.Now().UnixMilli() },
+		"time_NowRFC3339":   func() string { return time.Now().Format(time.RFC3339) },
+		"time_Format": func(layout string, t time.Time) string {
+			return t.Format(layout)
+		},
+
+		// Crypto
+		"crypto_SHA256": func(s string) string {
+			sum := sha256.Sum256([]byte(s))
+			return hex.EncodeToString(sum[:])
+		},
+		"crypto_MD5": func(s string) string {
+			sum := md5.Sum([]byte(s)) // #nosec G401 -- MD5 is intentionally provided as a non-security template helper
+			return hex.EncodeToString(sum[:])
+		},
+		"crypto_HMACSHA256": func(key string, msg string) string {
+			mac := hmac.New(sha256.New, []byte(key))
+			_, _ = mac.Write([]byte(msg))
+			return hex.EncodeToString(mac.Sum(nil))
+		},
+		"crypto_Base64URL": func(s string) string {
+			return base64.RawURLEncoding.EncodeToString([]byte(s))
+		},
+
 		// File
+		// file_Read reads a file (local or remote URL) and returns its content as a string.
+		// Usage: {{ file_Read "/path/to/file.txt" }}
+		//        {{ file_Read "https://example.com/data.txt" }}
+		"file_Read": func(source string) (string, error) {
+			if fileCache == nil {
+				return "", types.ErrFileCacheNotInitialized
+			}
+			cached, err := fileCache.GetOrLoad(source)
+			if err != nil {
+				return "", err
+			}
+			return string(cached.Content), nil
+		},
+
 		// file_Base64 reads a file (local or remote URL) and returns its Base64 encoded content.
 		// Usage: {{ file_Base64 "/path/to/file.pdf" }}
 		//        {{ file_Base64 "https://example.com/image.png" }}
