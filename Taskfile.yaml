@@ -39,10 +39,10 @@ tasks:
     cmds:
       - "{{.GOLANGCI}} run"
 
-  test:
-    desc: Run Go tests.
+  e2e:
+    desc: Run e2e tests
     cmds:
-      - go test ./... {{.CLI_ARGS}}
+      - go test ./e2e/... -v -count=1 {{.CLI_ARGS}}
 
   create-bin-dir:
     desc: Create bin directory.
