@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel is called in listenForTermination goroutine
 	go listenForTermination(func() { cancel() })
 
 	combinedConfig := config.ReadAllConfigs()

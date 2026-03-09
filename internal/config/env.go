@@ -157,7 +157,7 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 				types.NewFieldParseError(
 					parser.getFullEnvName("DURATION"),
 					duration,
-					errors.New("invalid value duration, expected a duration string (e.g., '10s', '1h30m')"),
+					errors.New("invalid value for duration, expected a duration string (e.g., '10s', '1h30m')"),
 				),
 			)
 		} else {
@@ -173,7 +173,7 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 				types.NewFieldParseError(
 					parser.getFullEnvName("TIMEOUT"),
 					timeout,
-					errors.New("invalid value duration, expected a duration string (e.g., '10s', '1h30m')"),
+					errors.New("invalid value for duration, expected a duration string (e.g., '10s', '1h30m')"),
 				),
 			)
 		} else {
