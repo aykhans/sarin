@@ -91,7 +91,7 @@ func NewRequestGenerator(
 				return err
 			}
 
-			bodyTemplateFuncMapData.ClearFormDataContenType()
+			bodyTemplateFuncMapData.ClearFormDataContentType()
 			if err = bodyGenerator(reqData, data); err != nil {
 				return err
 			}
@@ -99,8 +99,8 @@ func NewRequestGenerator(
 			if err = headersGenerator(reqData, data); err != nil {
 				return err
 			}
-			if bodyTemplateFuncMapData.GetFormDataContenType() != "" {
-				reqData.Headers["Content-Type"] = append(reqData.Headers["Content-Type"], bodyTemplateFuncMapData.GetFormDataContenType())
+			if bodyTemplateFuncMapData.GetFormDataContentType() != "" {
+				reqData.Headers["Content-Type"] = append(reqData.Headers["Content-Type"], bodyTemplateFuncMapData.GetFormDataContentType())
 			}
 
 			if err = paramsGenerator(reqData, data); err != nil {

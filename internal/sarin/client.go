@@ -172,7 +172,6 @@ func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL,
 				return nil, types.NewProxyDialError(proxyStr, err)
 			}
 
-			// Cap DNS resolution to half the timeout to reserve time for dial
 			dnsCtx, dnsCancel := context.WithTimeout(ctx, timeout)
 			ips, err := net.DefaultResolver.LookupIP(dnsCtx, "ip", host)
 			dnsCancel()
@@ -244,7 +243,7 @@ func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duratio
 		}
 
 		// Upgrade to TLS
-		tlsConn := tls.Client(conn, &tls.Config{ //nolint:gosec
+		tlsConn := tls.Client(conn, &tls.Config{
 			ServerName: proxyURL.Hostname(),
 		})
 		if err := tlsConn.Handshake(); err != nil {

@@ -418,7 +418,7 @@ func (config Config) Validate() error {
 		validationErrors = append(validationErrors, types.NewFieldValidationError("Duration", "0", errors.New("duration must be greater than 0")))
 	}
 
-	if *config.Timeout < 1 {
+	if config.Timeout == nil || *config.Timeout < 1 {
 		validationErrors = append(validationErrors, types.NewFieldValidationError("Timeout", "0", errors.New("timeout must be greater than 0")))
 	}
 

@@ -286,7 +286,7 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"fakeit_AdverbFrequencyDefinite":   fakeit.AdverbFrequencyDefinite,
 		"fakeit_AdverbFrequencyIndefinite": fakeit.AdverbFrequencyIndefinite,
 
-		// Propositions
+		// Prepositions
 		"fakeit_Preposition":         fakeit.Preposition,
 		"fakeit_PrepositionSimple":   fakeit.PrepositionSimple,
 		"fakeit_PrepositionDouble":   fakeit.PrepositionDouble,
@@ -589,15 +589,15 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 }
 
 type BodyTemplateFuncMapData struct {
-	formDataContenType string
+	formDataContentType string
 }
 
-func (data BodyTemplateFuncMapData) GetFormDataContenType() string {
-	return data.formDataContenType
+func (data BodyTemplateFuncMapData) GetFormDataContentType() string {
+	return data.formDataContentType
 }
 
-func (data *BodyTemplateFuncMapData) ClearFormDataContenType() {
-	data.formDataContenType = ""
+func (data *BodyTemplateFuncMapData) ClearFormDataContentType() {
+	data.formDataContentType = ""
 }
 
 func NewDefaultBodyTemplateFuncMap(
@@ -628,7 +628,7 @@ func NewDefaultBodyTemplateFuncMap(
 
 			var multipartData bytes.Buffer
 			writer := multipart.NewWriter(&multipartData)
-			data.formDataContenType = writer.FormDataContentType()
+			data.formDataContentType = writer.FormDataContentType()
 
 			for i := 0; i < len(pairs); i += 2 {
 				key := pairs[i]
