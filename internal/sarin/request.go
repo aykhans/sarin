@@ -43,19 +43,35 @@ func NewRequestGenerator(
 	randSource := NewDefaultRandSource()
 	//nolint:gosec // G404: Using non-cryptographic rand for load testing, not security
 	localRand := rand.New(randSource)
-	templateFuncMap := NewDefaultTemplateFuncMap(randSource, fileCache)
 
-	pathGenerator, isPathGeneratorDynamic := createTemplateFunc(requestURL.Path, templateFuncMap)
-	methodGenerator, isMethodGeneratorDynamic := NewMethodGeneratorFunc(localRand, methods, templateFuncMap)
-	paramsGenerator, isParamsGeneratorDynamic := NewParamsGeneratorFunc(localRand, params, templateFuncMap)
-	headersGenerator, isHeadersGeneratorDynamic := NewHeadersGeneratorFunc(localRand, headers, templateFuncMap)
-	cookiesGenerator, isCookiesGeneratorDynamic := NewCookiesGeneratorFunc(localRand, cookies, templateFuncMap)
+	// Lazily create root templates — Funcs() is only called if a value
+	// actually contains template syntax. The root template is shared across
+	// all createTemplateFunc calls so Funcs() is called at most once.
+	var templateRoot *template.Template
+	lazyTemplateRoot := func() *template.Template {
+		if templateRoot == nil {
+			templateRoot = template.New("").Funcs(NewDefaultTemplateFuncMap(randSource, fileCache))
+		}
+		return templateRoot
+	}
+
+	pathGenerator, isPathGeneratorDynamic := createTemplateFunc(requestURL.Path, lazyTemplateRoot)
+	methodGenerator, isMethodGeneratorDynamic := NewMethodGeneratorFunc(localRand, methods, lazyTemplateRoot)
+	paramsGenerator, isParamsGeneratorDynamic := NewParamsGeneratorFunc(localRand, params, lazyTemplateRoot)
+	headersGenerator, isHeadersGeneratorDynamic := NewHeadersGeneratorFunc(localRand, headers, lazyTemplateRoot)
+	cookiesGenerator, isCookiesGeneratorDynamic := NewCookiesGeneratorFunc(localRand, cookies, lazyTemplateRoot)
 
 	bodyTemplateFuncMapData := &BodyTemplateFuncMapData{}
-	bodyTemplateFuncMap := NewDefaultBodyTemplateFuncMap(randSource, bodyTemplateFuncMapData, fileCache)
-	bodyGenerator, isBodyGeneratorDynamic := NewBodyGeneratorFunc(localRand, bodies, bodyTemplateFuncMap)
+	var bodyTemplateRoot *template.Template
+	lazyBodyTemplateRoot := func() *template.Template {
+		if bodyTemplateRoot == nil {
+			bodyTemplateRoot = template.New("").Funcs(NewDefaultBodyTemplateFuncMap(randSource, bodyTemplateFuncMapData, fileCache))
+		}
+		return bodyTemplateRoot
+	}
+	bodyGenerator, isBodyGeneratorDynamic := NewBodyGeneratorFunc(localRand, bodies, lazyBodyTemplateRoot)
 
-	valuesGenerator := NewValuesGeneratorFunc(values, templateFuncMap)
+	valuesGenerator := NewValuesGeneratorFunc(values, lazyTemplateRoot)
 
 	hasScripts := scriptTransformer != nil && !scriptTransformer.IsEmpty()
 
@@ -170,8 +186,8 @@ func applyRequestDataToFastHTTP(reqData *script.RequestData, req *fasthttp.Reque
 	}
 }
 
-func NewMethodGeneratorFunc(localRand *rand.Rand, methods []string, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
-	methodGenerator, isDynamic := buildStringSliceGenerator(localRand, methods, templateFunctions)
+func NewMethodGeneratorFunc(localRand *rand.Rand, methods []string, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
+	methodGenerator, isDynamic := buildStringSliceGenerator(localRand, methods, lazyRoot)
 
 	var (
 		method string
@@ -188,8 +204,8 @@ func NewMethodGeneratorFunc(localRand *rand.Rand, methods []string, templateFunc
 	}, isDynamic
 }
 
-func NewBodyGeneratorFunc(localRand *rand.Rand, bodies []string, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
-	bodyGenerator, isDynamic := buildStringSliceGenerator(localRand, bodies, templateFunctions)
+func NewBodyGeneratorFunc(localRand *rand.Rand, bodies []string, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
+	bodyGenerator, isDynamic := buildStringSliceGenerator(localRand, bodies, lazyRoot)
 
 	var (
 		body string
@@ -206,8 +222,8 @@ func NewBodyGeneratorFunc(localRand *rand.Rand, bodies []string, templateFunctio
 	}, isDynamic
 }
 
-func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
-	generators, isDynamic := buildKeyValueGenerators(localRand, params, templateFunctions)
+func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
+	generators, isDynamic := buildKeyValueGenerators(localRand, params, lazyRoot)
 
 	var (
 		key, value string
@@ -231,8 +247,8 @@ func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, templateF
 	}, isDynamic
 }
 
-func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
-	generators, isDynamic := buildKeyValueGenerators(localRand, headers, templateFunctions)
+func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
+	generators, isDynamic := buildKeyValueGenerators(localRand, headers, lazyRoot)
 
 	var (
 		key, value string
@@ -256,8 +272,8 @@ func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, templa
 	}, isDynamic
 }
 
-func NewCookiesGeneratorFunc(localRand *rand.Rand, cookies types.Cookies, templateFunctions template.FuncMap) (requestDataGenerator, bool) {
-	generators, isDynamic := buildKeyValueGenerators(localRand, cookies, templateFunctions)
+func NewCookiesGeneratorFunc(localRand *rand.Rand, cookies types.Cookies, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
+	generators, isDynamic := buildKeyValueGenerators(localRand, cookies, lazyRoot)
 
 	var (
 		key, value string
@@ -281,11 +297,11 @@ func NewCookiesGeneratorFunc(localRand *rand.Rand, cookies types.Cookies, templa
 	}, isDynamic
 }
 
-func NewValuesGeneratorFunc(values []string, templateFunctions template.FuncMap) func() (valuesData, error) {
+func NewValuesGeneratorFunc(values []string, lazyRoot func() *template.Template) func() (valuesData, error) {
 	generators := make([]func(_ any) (string, error), len(values))
 
 	for i, v := range values {
-		generators[i], _ = createTemplateFunc(v, templateFunctions)
+		generators[i], _ = createTemplateFunc(v, lazyRoot)
 	}
 
 	var (
@@ -313,8 +329,12 @@ func NewValuesGeneratorFunc(values []string, templateFunctions template.FuncMap)
 	}
 }
 
-func createTemplateFunc(value string, templateFunctions template.FuncMap) (func(data any) (string, error), bool) {
-	tmpl, err := template.New("").Funcs(templateFunctions).Parse(value)
+func createTemplateFunc(value string, lazyRoot func() *template.Template) (func(data any) (string, error), bool) {
+	if !strings.Contains(value, "{{") {
+		return func(_ any) (string, error) { return value, nil }, false
+	}
+
+	tmpl, err := lazyRoot().New("").Parse(value)
 	if err == nil && hasTemplateActions(tmpl) {
 		var err error
 		return func(data any) (string, error) {
@@ -340,7 +360,7 @@ type keyValueItem interface {
 func buildKeyValueGenerators[T keyValueItem](
 	localRand *rand.Rand,
 	items []T,
-	templateFunctions template.FuncMap,
+	lazyRoot func() *template.Template,
 ) ([]keyValueGenerator, bool) {
 	isDynamic := false
 	generators := make([]keyValueGenerator, len(items))
@@ -350,7 +370,7 @@ func buildKeyValueGenerators[T keyValueItem](
 		keyValue := types.KeyValue[string, []string](item)
 
 		// Generate key function
-		keyFunc, keyIsDynamic := createTemplateFunc(keyValue.Key, templateFunctions)
+		keyFunc, keyIsDynamic := createTemplateFunc(keyValue.Key, lazyRoot)
 		if keyIsDynamic {
 			isDynamic = true
 		}
@@ -358,7 +378,7 @@ func buildKeyValueGenerators[T keyValueItem](
 		// Generate value functions
 		valueFuncs := make([]func(data any) (string, error), len(keyValue.Value))
 		for j, v := range keyValue.Value {
-			valueFunc, valueIsDynamic := createTemplateFunc(v, templateFunctions)
+			valueFunc, valueIsDynamic := createTemplateFunc(v, lazyRoot)
 			if valueIsDynamic {
 				isDynamic = true
 			}
@@ -381,7 +401,7 @@ func buildKeyValueGenerators[T keyValueItem](
 func buildStringSliceGenerator(
 	localRand *rand.Rand,
 	values []string,
-	templateFunctions template.FuncMap,
+	lazyRoot func() *template.Template,
 ) (func() func(data any) (string, error), bool) {
 	// Return a function that returns an empty string generator if values is empty
 	if len(values) == 0 {
@@ -393,7 +413,7 @@ func buildStringSliceGenerator(
 	valueFuncs := make([]func(data any) (string, error), len(values))
 
 	for i, value := range values {
-		valueFunc, valueIsDynamic := createTemplateFunc(value, templateFunctions)
+		valueFunc, valueIsDynamic := createTemplateFunc(value, lazyRoot)
 		if valueIsDynamic {
 			isDynamic = true
 		}
