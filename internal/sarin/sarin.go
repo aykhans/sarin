@@ -484,13 +484,11 @@ func newHostClients(
 		proxiesRaw[i] = url.URL(proxy)
 	}
 
-	maxConns := max(fasthttp.DefaultMaxConnsPerHost, workers)
-	maxConns = ((maxConns * 50 / 100) + maxConns)
 	return NewHostClients(
 		ctx,
 		timeout,
 		proxiesRaw,
-		maxConns,
+		workers,
 		requestURL,
 		skipCertVerify,
 	)
