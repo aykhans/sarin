@@ -11,7 +11,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/joho/godotenv v1.5.1
-	github.com/valyala/fasthttp v1.69.0
+	github.com/valyala/fasthttp v1.70.0
 	github.com/yuin/gopher-lua v1.1.2
 	go.aykhans.me/utils v1.0.7
 	go.yaml.in/yaml/v4 v4.0.0-rc.4
@@ -20,7 +20,7 @@ require (
 
 require (
 	github.com/alecthomas/chroma/v2 v2.23.1 // indirect
-	github.com/andybalholm/brotli v1.2.0 // indirect
+	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
