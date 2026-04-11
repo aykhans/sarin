@@ -4,6 +4,8 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
 
 > **Note:** Templating in URL host and scheme is not supported. Only the path portion of the URL can contain templates.
 
+> **Note:** Template rendering happens before the request is sent. The request timeout (`-T` / `timeout`) only governs the HTTP request itself and starts _after_ templates have finished rendering, so slow template functions (e.g. captcha solvers, remote `file_Read`) cannot cause a request timeout no matter how long they take.
+
 ## Table of Contents
 
 - [Using Values](#using-values)
@@ -14,6 +16,10 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
     - [Crypto Functions](#crypto-functions)
     - [Body Functions](#body-functions)
     - [File Functions](#file-functions)
+- [Captcha Functions](#captcha-functions)
+    - [2Captcha](#2captcha)
+    - [Anti-Captcha](#anti-captcha)
+    - [CapSolver](#capsolver)
 - [Fake Data Functions](#fake-data-functions)
     - [File](#file)
     - [ID](#id)
@@ -194,6 +200,95 @@ body: '{"image": "{{ file_Base64 "https://example.com/photo.jpg" }}"}'
 # Combined with values for reuse
 values: "FILE_DATA={{ file_Base64 \"/path/to/file.bin\" }}"
 body: '{"data": "{{ .Values.FILE_DATA }}"}'
+```
+
+## Captcha Functions
+
+Captcha functions solve a captcha challenge through a third-party solving service and return the resulting token, which can then be embedded directly into a request. They are intended for load testing endpoints protected by reCAPTCHA, hCaptcha, or Cloudflare Turnstile.
+
+The functions are organized by service: `twocaptcha_*`, `anticaptcha_*`, and `capsolver_*`. Each accepts the API key as the first argument so no global configuration is required — bring your own key and use any of the supported services per template.
+
+> **Important — performance and cost:**
+>
+> - **Each call is slow.** Solving typically takes ~5–60 seconds because the function blocks the template render until the third-party service returns a token. Internally the solver polls every 1s and gives up after 120s.
+> - **Each call costs money.** Every successful solve is billed by the captcha service (typically $0.001–$0.003 per solve). For high-volume tests, your captcha bill grows linearly with request count.
+
+**Common parameters across all captcha functions:**
+
+- `apiKey` - Your API key for the chosen captcha solving service
+- `siteKey` - The captcha sitekey extracted from the target page (e.g. the `data-sitekey` attribute on a reCAPTCHA, hCaptcha, or Turnstile element)
+- `pageURL` - The URL of the page where the captcha is hosted
+
+### 2Captcha
+
+Functions for the [2Captcha](https://2captcha.com) service. Note: 2Captcha **does not currently support hCaptcha** through their API.
+
+| Function                                                                 | Description                                                               |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `twocaptcha_RecaptchaV2(apiKey, siteKey, pageURL string)`                | Solve a Google reCAPTCHA v2 challenge                                     |
+| `twocaptcha_RecaptchaV3(apiKey, siteKey, pageURL, pageAction string)`    | Solve a Google reCAPTCHA v3 challenge. Pass `""` for `pageAction` to omit |
+| `twocaptcha_Turnstile(apiKey, siteKey, pageURL string, cData ...string)` | Solve a Cloudflare Turnstile challenge. Optional `cData` argument         |
+
+### Anti-Captcha
+
+Functions for the [Anti-Captcha](https://anti-captcha.com) service. This is currently the only service that supports all four captcha types end-to-end.
+
+| Function                                                                  | Description                                                                                                           |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `anticaptcha_RecaptchaV2(apiKey, siteKey, pageURL string)`                | Solve a Google reCAPTCHA v2 challenge                                                                                 |
+| `anticaptcha_RecaptchaV3(apiKey, siteKey, pageURL, pageAction string)`    | Solve a Google reCAPTCHA v3 challenge. `minScore` is hardcoded to `0.3` (Anti-Captcha rejects the request without it) |
+| `anticaptcha_HCaptcha(apiKey, siteKey, pageURL string)`                   | Solve an hCaptcha challenge                                                                                           |
+| `anticaptcha_Turnstile(apiKey, siteKey, pageURL string, cData ...string)` | Solve a Cloudflare Turnstile challenge. Optional `cData` argument                                                     |
+
+### CapSolver
+
+Functions for the [CapSolver](https://capsolver.com) service. Note: CapSolver no longer supports hCaptcha.
+
+| Function                                                                | Description                                                               |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `capsolver_RecaptchaV2(apiKey, siteKey, pageURL string)`                | Solve a Google reCAPTCHA v2 challenge                                     |
+| `capsolver_RecaptchaV3(apiKey, siteKey, pageURL, pageAction string)`    | Solve a Google reCAPTCHA v3 challenge. Pass `""` for `pageAction` to omit |
+| `capsolver_Turnstile(apiKey, siteKey, pageURL string, cData ...string)` | Solve a Cloudflare Turnstile challenge. Optional `cData` argument         |
+
+**Examples:**
+
+```yaml
+# reCAPTCHA v2 in a JSON body via 2Captcha
+method: POST
+url: https://example.com/login
+body: |
+    {
+      "username": "test",
+      "g-recaptcha-response": "{{ twocaptcha_RecaptchaV2 "YOUR_API_KEY" "6LfD3PIb..." "https://example.com/login" }}"
+    }
+```
+
+```yaml
+# Turnstile via Anti-Captcha with cData
+method: POST
+url: https://example.com/submit
+body: |
+    {
+      "cf-turnstile-response": "{{ anticaptcha_Turnstile "YOUR_API_KEY" "0x4AAAAAAA..." "https://example.com/submit" "session-cdata" }}"
+    }
+```
+
+```yaml
+# hCaptcha via Anti-Captcha (the only service that still supports it)
+method: POST
+url: https://example.com/protected
+body: |
+    {
+      "h-captcha-response": "{{ anticaptcha_HCaptcha "YOUR_API_KEY" "338af34c-..." "https://example.com/protected" }}"
+    }
+```
+
+```yaml
+# Share a single solved token across body and headers via values
+values: 'TOKEN={{ capsolver_Turnstile "YOUR_API_KEY" "0x4AAAAAAA..." "https://example.com" }}'
+headers:
+    X-Turnstile-Token: "{{ .Values.TOKEN }}"
+body: '{"token": "{{ .Values.TOKEN }}"}'
 ```
 
 ## Fake Data Functions
