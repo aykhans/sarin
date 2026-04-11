@@ -442,3 +442,65 @@ func NewScriptUnknownEngineError(engineType string) ScriptUnknownEngineError {
 func (e ScriptUnknownEngineError) Error() string {
 	return "unknown engine type: " + e.EngineType
 }
+
+// ======================================== Captcha ========================================
+
+var ErrCaptchaKeyEmpty = errors.New("captcha API key cannot be empty")
+
+type CaptchaAPIError struct {
+	Endpoint    string
+	Code        string
+	Description string
+}
+
+func NewCaptchaAPIError(endpoint, code, description string) CaptchaAPIError {
+	return CaptchaAPIError{Endpoint: endpoint, Code: code, Description: description}
+}
+
+func (e CaptchaAPIError) Error() string {
+	return fmt.Sprintf("captcha %s error: %s (%s)", e.Endpoint, e.Code, e.Description)
+}
+
+type CaptchaRequestError struct {
+	Endpoint string
+	Err      error
+}
+
+func NewCaptchaRequestError(endpoint string, err error) CaptchaRequestError {
+	if err == nil {
+		err = errNoError
+	}
+	return CaptchaRequestError{Endpoint: endpoint, Err: err}
+}
+
+func (e CaptchaRequestError) Error() string {
+	return fmt.Sprintf("captcha %s request failed: %v", e.Endpoint, e.Err)
+}
+
+func (e CaptchaRequestError) Unwrap() error {
+	return e.Err
+}
+
+type CaptchaTimeoutError struct {
+	TaskID string
+}
+
+func NewCaptchaTimeoutError(taskID string) CaptchaTimeoutError {
+	return CaptchaTimeoutError{TaskID: taskID}
+}
+
+func (e CaptchaTimeoutError) Error() string {
+	return fmt.Sprintf("captcha solving timed out (taskId: %s)", e.TaskID)
+}
+
+type CaptchaSolutionKeyError struct {
+	Key string
+}
+
+func NewCaptchaSolutionKeyError(key string) CaptchaSolutionKeyError {
+	return CaptchaSolutionKeyError{Key: key}
+}
+
+func (e CaptchaSolutionKeyError) Error() string {
+	return fmt.Sprintf("captcha solution missing expected key %q", e.Key)
+}

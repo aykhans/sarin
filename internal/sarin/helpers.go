@@ -12,3 +12,10 @@ func NewDefaultRandSource() rand.Source {
 		uint64(now>>32),
 	)
 }
+
+func firstOrEmpty(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}

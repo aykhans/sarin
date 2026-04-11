@@ -574,8 +574,7 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"fakeit_ErrorHTTP":       func() string { return fakeit.ErrorHTTP().Error() },
 		"fakeit_ErrorHTTPClient": func() string { return fakeit.ErrorHTTPClient().Error() },
 		"fakeit_ErrorHTTPServer": func() string { return fakeit.ErrorHTTPServer().Error() },
-		// "fakeit_ErrorInput": func() string { return fakeit.ErrorInput().Error() },
-		"fakeit_ErrorRuntime": func() string { return fakeit.ErrorRuntime().Error() },
+		"fakeit_ErrorRuntime":    func() string { return fakeit.ErrorRuntime().Error() },
 
 		// Fakeit / School
 		"fakeit_School": fakeit.School,
@@ -585,6 +584,55 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"fakeit_SongName":   fakeit.SongName,
 		"fakeit_SongArtist": fakeit.SongArtist,
 		"fakeit_SongGenre":  fakeit.SongGenre,
+
+		// Captcha / 2Captcha
+		// Usage: {{ twocaptcha_RecaptchaV2 "API_KEY" "SITE_KEY" "https://example.com" }}
+		"twocaptcha_RecaptchaV2": func(apiKey, websiteKey, websiteURL string) (string, error) {
+			return twoCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey)
+		},
+		// Usage: {{ twocaptcha_RecaptchaV3 "API_KEY" "SITE_KEY" "https://example.com" "action" }}
+		"twocaptcha_RecaptchaV3": func(apiKey, websiteKey, websiteURL, pageAction string) (string, error) {
+			return twoCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction)
+		},
+		// Usage: {{ twocaptcha_Turnstile "API_KEY" "SITE_KEY" "https://example.com" }}
+		//        {{ twocaptcha_Turnstile "API_KEY" "SITE_KEY" "https://example.com" "cdata" }}
+		"twocaptcha_Turnstile": func(apiKey, websiteKey, websiteURL string, cData ...string) (string, error) {
+			return twoCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, firstOrEmpty(cData))
+		},
+
+		// Captcha / Anti-Captcha
+		// Usage: {{ anticaptcha_RecaptchaV2 "API_KEY" "SITE_KEY" "https://example.com" }}
+		"anticaptcha_RecaptchaV2": func(apiKey, websiteKey, websiteURL string) (string, error) {
+			return antiCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey)
+		},
+		// Usage: {{ anticaptcha_RecaptchaV3 "API_KEY" "SITE_KEY" "https://example.com" "action" }}
+		"anticaptcha_RecaptchaV3": func(apiKey, websiteKey, websiteURL, pageAction string) (string, error) {
+			return antiCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction)
+		},
+		// Usage: {{ anticaptcha_HCaptcha "API_KEY" "SITE_KEY" "https://example.com" }}
+		"anticaptcha_HCaptcha": func(apiKey, websiteKey, websiteURL string) (string, error) {
+			return antiCaptchaSolveHCaptcha(apiKey, websiteURL, websiteKey)
+		},
+		// Usage: {{ anticaptcha_Turnstile "API_KEY" "SITE_KEY" "https://example.com" }}
+		//        {{ anticaptcha_Turnstile "API_KEY" "SITE_KEY" "https://example.com" "cdata" }}
+		"anticaptcha_Turnstile": func(apiKey, websiteKey, websiteURL string, cData ...string) (string, error) {
+			return antiCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, firstOrEmpty(cData))
+		},
+
+		// Captcha / CapSolver
+		// Usage: {{ capsolver_RecaptchaV2 "API_KEY" "SITE_KEY" "https://example.com" }}
+		"capsolver_RecaptchaV2": func(apiKey, websiteKey, websiteURL string) (string, error) {
+			return capSolverSolveRecaptchaV2(apiKey, websiteURL, websiteKey)
+		},
+		// Usage: {{ capsolver_RecaptchaV3 "API_KEY" "SITE_KEY" "https://example.com" "action" }}
+		"capsolver_RecaptchaV3": func(apiKey, websiteKey, websiteURL, pageAction string) (string, error) {
+			return capSolverSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction)
+		},
+		// Usage: {{ capsolver_Turnstile "API_KEY" "SITE_KEY" "https://example.com" }}
+		//        {{ capsolver_Turnstile "API_KEY" "SITE_KEY" "https://example.com" "cdata" }}
+		"capsolver_Turnstile": func(apiKey, websiteKey, websiteURL string, cData ...string) (string, error) {
+			return capSolverSolveTurnstile(apiKey, websiteURL, websiteKey, firstOrEmpty(cData))
+		},
 	}
 }
 
