@@ -445,7 +445,13 @@ func (e ScriptUnknownEngineError) Error() string {
 
 // ======================================== Captcha ========================================
 
-var ErrCaptchaKeyEmpty = errors.New("captcha API key cannot be empty")
+var (
+	ErrCaptchaKeyEmpty = errors.New("captcha API key cannot be empty")
+	// ErrCaptchaProcessing is an internal sentinel returned by the captcha solver polling
+	// code to signal that a task is not yet solved and polling should continue.
+	// It should never be surfaced to callers outside of the captcha poll loop.
+	ErrCaptchaProcessing = errors.New("captcha task still processing")
+)
 
 type CaptchaAPIError struct {
 	Endpoint    string

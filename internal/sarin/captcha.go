@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -12,16 +13,27 @@ import (
 )
 
 const (
-	captchaPollInterval = 5 * time.Second
+	captchaPollInterval = 1 * time.Second
 	captchaTimeout      = 120 * time.Second
 )
 
 var captchaHTTPClient = &http.Client{Timeout: captchaTimeout}
 
-// solveCaptcha creates a task and polls for the result.
+// solveCaptcha creates a task on the given captcha service and polls until it is solved,
+// returning the extracted token from the solution object.
+//
 // baseURL is the service API base (e.g. "https://api.2captcha.com").
-// taskIDIsString controls whether taskId is sent back as a string or number.
+// task is the task payload the service expects (type + service-specific fields).
 // solutionKey is the field name in the solution object that holds the token.
+// taskIDIsString controls whether taskId is sent back as a string (CapSolver UUIDs)
+// or a JSON number (2Captcha, Anti-Captcha).
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func solveCaptcha(baseURL, apiKey string, task map[string]any, solutionKey string, taskIDIsString bool) (string, error) {
 	if apiKey == "" {
 		return "", types.ErrCaptchaKeyEmpty
@@ -34,6 +46,13 @@ func solveCaptcha(baseURL, apiKey string, task map[string]any, solutionKey strin
 	return captchaPollResult(baseURL, apiKey, taskID, solutionKey, taskIDIsString)
 }
 
+// captchaCreateTask submits a task to the captcha service and returns the assigned taskId.
+// The taskId is normalized to a string: numeric IDs are preserved via json.RawMessage,
+// and quoted string IDs (CapSolver UUIDs) have their surrounding quotes stripped.
+//
+// It can return the following errors:
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
 func captchaCreateTask(baseURL, apiKey string, task map[string]any) (string, error) {
 	body := map[string]any{
 		"clientKey": apiKey,
@@ -71,9 +90,21 @@ func captchaCreateTask(baseURL, apiKey string, task map[string]any) (string, err
 
 	// taskId may be a JSON number (2captcha, anti-captcha) or a quoted string (capsolver UUIDs).
 	// Strip surrounding quotes if present so we always work with the underlying value.
-	return strings.Trim(string(result.TaskID), `"`), nil
+	taskID := strings.Trim(string(result.TaskID), `"`)
+	if taskID == "" {
+		return "", types.NewCaptchaAPIError("createTask", "EMPTY_TASK_ID", "service returned a successful response with no taskId")
+	}
+	return taskID, nil
 }
 
+// captchaPollResult polls the getTaskResult endpoint at captchaPollInterval until the task
+// is solved, an error is returned by the service, or the overall captchaTimeout is hit.
+//
+// It can return the following errors:
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaSolutionKeyError
 func captchaPollResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsString bool) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), captchaTimeout)
 	defer cancel()
@@ -86,18 +117,26 @@ func captchaPollResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsStri
 		case <-ctx.Done():
 			return "", types.NewCaptchaTimeoutError(taskID)
 		case <-ticker.C:
-			token, done, err := captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey, taskIDIsString)
+			token, err := captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey, taskIDIsString)
+			if errors.Is(err, types.ErrCaptchaProcessing) {
+				continue
+			}
 			if err != nil {
 				return "", err
 			}
-			if done {
-				return token, nil
-			}
+			return token, nil
 		}
 	}
 }
 
-func captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsString bool) (string, bool, error) {
+// captchaGetTaskResult fetches a single task result from the captcha service.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaProcessing
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaSolutionKeyError
+func captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsString bool) (string, error) {
 	var bodyMap map[string]any
 	if taskIDIsString {
 		bodyMap = map[string]any{"clientKey": apiKey, "taskId": taskID}
@@ -107,7 +146,7 @@ func captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsS
 
 	data, err := json.Marshal(bodyMap)
 	if err != nil {
-		return "", false, types.NewCaptchaRequestError("getTaskResult", err)
+		return "", types.NewCaptchaRequestError("getTaskResult", err)
 	}
 
 	resp, err := captchaHTTPClient.Post(
@@ -116,7 +155,7 @@ func captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsS
 		bytes.NewReader(data),
 	)
 	if err != nil {
-		return "", false, types.NewCaptchaRequestError("getTaskResult", err)
+		return "", types.NewCaptchaRequestError("getTaskResult", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
@@ -128,33 +167,41 @@ func captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsS
 		Solution         map[string]any `json:"solution"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", false, types.NewCaptchaRequestError("getTaskResult", err)
+		return "", types.NewCaptchaRequestError("getTaskResult", err)
 	}
 
 	if result.ErrorID != 0 {
-		return "", false, types.NewCaptchaAPIError("getTaskResult", result.ErrorCode, result.ErrorDescription)
+		return "", types.NewCaptchaAPIError("getTaskResult", result.ErrorCode, result.ErrorDescription)
 	}
 
 	if result.Status == "processing" || result.Status == "idle" {
-		return "", false, nil
+		return "", types.ErrCaptchaProcessing
 	}
 
 	token, ok := result.Solution[solutionKey]
 	if !ok {
-		return "", false, types.NewCaptchaSolutionKeyError(solutionKey)
+		return "", types.NewCaptchaSolutionKeyError(solutionKey)
 	}
 	tokenStr, ok := token.(string)
 	if !ok {
-		return "", false, types.NewCaptchaSolutionKeyError(solutionKey)
+		return "", types.NewCaptchaSolutionKeyError(solutionKey)
 	}
 
-	return tokenStr, true, nil
+	return tokenStr, nil
 }
 
 // ======================================== 2Captcha ========================================
 
 const twoCaptchaBaseURL = "https://api.2captcha.com"
 
+// twoCaptchaSolveRecaptchaV2 solves a Google reCAPTCHA v2 challenge via 2Captcha.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func twoCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, error) {
 	return solveCaptcha(twoCaptchaBaseURL, apiKey, map[string]any{
 		"type":       "RecaptchaV2TaskProxyless",
@@ -163,6 +210,15 @@ func twoCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, 
 	}, "gRecaptchaResponse", false)
 }
 
+// twoCaptchaSolveRecaptchaV3 solves a Google reCAPTCHA v3 challenge via 2Captcha.
+// pageAction may be empty.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func twoCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string) (string, error) {
 	task := map[string]any{
 		"type":       "RecaptchaV3TaskProxyless",
@@ -175,6 +231,15 @@ func twoCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction strin
 	return solveCaptcha(twoCaptchaBaseURL, apiKey, task, "gRecaptchaResponse", false)
 }
 
+// twoCaptchaSolveTurnstile solves a Cloudflare Turnstile challenge via 2Captcha.
+// cData may be empty.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func twoCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, cData string) (string, error) {
 	task := map[string]any{
 		"type":       "TurnstileTaskProxyless",
@@ -191,6 +256,14 @@ func twoCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, cData string) (str
 
 const antiCaptchaBaseURL = "https://api.anti-captcha.com"
 
+// antiCaptchaSolveRecaptchaV2 solves a Google reCAPTCHA v2 challenge via Anti-Captcha.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func antiCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, error) {
 	return solveCaptcha(antiCaptchaBaseURL, apiKey, map[string]any{
 		"type":       "RecaptchaV2TaskProxyless",
@@ -199,8 +272,17 @@ func antiCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string,
 	}, "gRecaptchaResponse", false)
 }
 
+// antiCaptchaSolveRecaptchaV3 solves a Google reCAPTCHA v3 challenge via Anti-Captcha.
+// pageAction may be empty. minScore is hardcoded to 0.3 (the loosest threshold) because
+// Anti-Captcha rejects the request without it.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func antiCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string) (string, error) {
-	// Anti-Captcha requires minScore for reCAPTCHA v3. 0.3 is the loosest threshold.
 	task := map[string]any{
 		"type":       "RecaptchaV3TaskProxyless",
 		"websiteURL": websiteURL,
@@ -213,8 +295,16 @@ func antiCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction stri
 	return solveCaptcha(antiCaptchaBaseURL, apiKey, task, "gRecaptchaResponse", false)
 }
 
+// antiCaptchaSolveHCaptcha solves an hCaptcha challenge via Anti-Captcha.
+// Anti-Captcha returns hCaptcha tokens under "gRecaptchaResponse" (not "token").
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func antiCaptchaSolveHCaptcha(apiKey, websiteURL, websiteKey string) (string, error) {
-	// Anti-Captcha returns hCaptcha tokens under "gRecaptchaResponse" (not "token").
 	return solveCaptcha(antiCaptchaBaseURL, apiKey, map[string]any{
 		"type":       "HCaptchaTaskProxyless",
 		"websiteURL": websiteURL,
@@ -222,6 +312,15 @@ func antiCaptchaSolveHCaptcha(apiKey, websiteURL, websiteKey string) (string, er
 	}, "gRecaptchaResponse", false)
 }
 
+// antiCaptchaSolveTurnstile solves a Cloudflare Turnstile challenge via Anti-Captcha.
+// cData may be empty.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func antiCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, cData string) (string, error) {
 	task := map[string]any{
 		"type":       "TurnstileTaskProxyless",
@@ -238,6 +337,14 @@ func antiCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, cData string) (st
 
 const capSolverBaseURL = "https://api.capsolver.com"
 
+// capSolverSolveRecaptchaV2 solves a Google reCAPTCHA v2 challenge via CapSolver.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func capSolverSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, error) {
 	return solveCaptcha(capSolverBaseURL, apiKey, map[string]any{
 		"type":       "ReCaptchaV2TaskProxyLess",
@@ -246,6 +353,15 @@ func capSolverSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, e
 	}, "gRecaptchaResponse", true)
 }
 
+// capSolverSolveRecaptchaV3 solves a Google reCAPTCHA v3 challenge via CapSolver.
+// pageAction may be empty.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func capSolverSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string) (string, error) {
 	task := map[string]any{
 		"type":       "ReCaptchaV3TaskProxyLess",
@@ -258,6 +374,15 @@ func capSolverSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string
 	return solveCaptcha(capSolverBaseURL, apiKey, task, "gRecaptchaResponse", true)
 }
 
+// capSolverSolveTurnstile solves a Cloudflare Turnstile challenge via CapSolver.
+// cData may be empty. CapSolver nests cData under a "metadata" object.
+//
+// It can return the following errors:
+//   - types.ErrCaptchaKeyEmpty
+//   - types.CaptchaRequestError
+//   - types.CaptchaAPIError
+//   - types.CaptchaTimeoutError
+//   - types.CaptchaSolutionKeyError
 func capSolverSolveTurnstile(apiKey, websiteURL, websiteKey, cData string) (string, error) {
 	task := map[string]any{
 		"type":       "AntiTurnstileTaskProxyLess",
