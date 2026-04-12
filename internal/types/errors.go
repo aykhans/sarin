@@ -520,6 +520,26 @@ func (e CaptchaRequestError) Unwrap() error {
 	return e.Err
 }
 
+type CaptchaDecodeError struct {
+	Endpoint string
+	Err      error
+}
+
+func NewCaptchaDecodeError(endpoint string, err error) CaptchaDecodeError {
+	if err == nil {
+		err = errNoError
+	}
+	return CaptchaDecodeError{Endpoint: endpoint, Err: err}
+}
+
+func (e CaptchaDecodeError) Error() string {
+	return fmt.Sprintf("captcha %s decode failed: %v", e.Endpoint, e.Err)
+}
+
+func (e CaptchaDecodeError) Unwrap() error {
+	return e.Err
+}
+
 type CaptchaPollTimeoutError struct {
 	TaskID string
 }

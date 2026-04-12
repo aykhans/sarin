@@ -31,6 +31,7 @@ var captchaHTTPClient = &http.Client{Timeout: 5 * time.Second}
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -52,6 +53,7 @@ func solveCaptcha(baseURL, apiKey string, task map[string]any, solutionKey strin
 //
 // It can return the following errors:
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 func captchaCreateTask(baseURL, apiKey string, task map[string]any) (string, error) {
 	body := map[string]any{
@@ -61,7 +63,7 @@ func captchaCreateTask(baseURL, apiKey string, task map[string]any) (string, err
 
 	data, err := json.Marshal(body)
 	if err != nil {
-		return "", types.NewCaptchaRequestError("createTask", err)
+		return "", types.NewCaptchaDecodeError("createTask", err)
 	}
 
 	resp, err := captchaHTTPClient.Post(
@@ -81,7 +83,7 @@ func captchaCreateTask(baseURL, apiKey string, task map[string]any) (string, err
 		TaskID           json.RawMessage `json:"taskId"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", types.NewCaptchaRequestError("createTask", err)
+		return "", types.NewCaptchaDecodeError("createTask", err)
 	}
 
 	if result.ErrorID != 0 {
@@ -102,7 +104,7 @@ func captchaCreateTask(baseURL, apiKey string, task map[string]any) (string, err
 //
 // It can return the following errors:
 //   - types.CaptchaPollTimeoutError
-//   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaSolutionKeyError
 func captchaPollResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsString bool) (string, error) {
@@ -121,6 +123,12 @@ func captchaPollResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsStri
 			if errors.Is(err, types.ErrCaptchaProcessing) {
 				continue
 			}
+			// Retry on transient HTTP errors (timeouts, connection resets, etc.)
+			// instead of failing the entire solve. The poll loop timeout will
+			// eventually catch permanently unreachable services.
+			if _, ok := errors.AsType[types.CaptchaRequestError](err); ok {
+				continue
+			}
 			if err != nil {
 				return "", err
 			}
@@ -134,6 +142,7 @@ func captchaPollResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsStri
 // It can return the following errors:
 //   - types.ErrCaptchaProcessing
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaSolutionKeyError
 func captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsString bool) (string, error) {
@@ -146,7 +155,7 @@ func captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsS
 
 	data, err := json.Marshal(bodyMap)
 	if err != nil {
-		return "", types.NewCaptchaRequestError("getTaskResult", err)
+		return "", types.NewCaptchaDecodeError("getTaskResult", err)
 	}
 
 	resp, err := captchaHTTPClient.Post(
@@ -167,7 +176,7 @@ func captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsS
 		Solution         map[string]any `json:"solution"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", types.NewCaptchaRequestError("getTaskResult", err)
+		return "", types.NewCaptchaDecodeError("getTaskResult", err)
 	}
 
 	if result.ErrorID != 0 {
@@ -199,6 +208,7 @@ const twoCaptchaBaseURL = "https://api.2captcha.com"
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -216,6 +226,7 @@ func twoCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, 
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -237,6 +248,7 @@ func twoCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction strin
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -261,6 +273,7 @@ const antiCaptchaBaseURL = "https://api.anti-captcha.com"
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -279,6 +292,7 @@ func antiCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string,
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -301,6 +315,7 @@ func antiCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction stri
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -318,6 +333,7 @@ func antiCaptchaSolveHCaptcha(apiKey, websiteURL, websiteKey string) (string, er
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -342,6 +358,7 @@ const capSolverBaseURL = "https://api.capsolver.com"
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -359,6 +376,7 @@ func capSolverSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, e
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
@@ -380,6 +398,7 @@ func capSolverSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string
 // It can return the following errors:
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
+//   - types.CaptchaDecodeError
 //   - types.CaptchaAPIError
 //   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
