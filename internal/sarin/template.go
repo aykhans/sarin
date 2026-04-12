@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"math/rand/v2"
 	"mime/multipart"
 	"strings"
@@ -84,6 +85,38 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"slice_Int":  func(values ...int) []int { return values },
 		"slice_Uint": func(values ...uint) []uint { return values },
 		"slice_Join": strings.Join,
+
+		// JSON
+		// json_Encode marshals any value to a JSON string.
+		// Usage: {{ json_Encode (dict_Str "key" "value") }}
+		"json_Encode": func(v any) (string, error) {
+			data, err := json.Marshal(v)
+			if err != nil {
+				return "", types.NewJSONEncodeError(err)
+			}
+			return string(data), nil
+		},
+		// json_Object builds a JSON object from interleaved key-value pairs and returns it
+		// as a JSON string. Keys must be strings; values may be any JSON-encodable type.
+		// Usage: {{ json_Object "name" "Alice" "age" 30 }}
+		"json_Object": func(pairs ...any) (string, error) {
+			if len(pairs)%2 != 0 {
+				return "", types.ErrJSONObjectOddArgs
+			}
+			obj := make(map[string]any, len(pairs)/2)
+			for i := 0; i < len(pairs); i += 2 {
+				key, ok := pairs[i].(string)
+				if !ok {
+					return "", types.NewJSONObjectKeyError(i, pairs[i])
+				}
+				obj[key] = pairs[i+1]
+			}
+			data, err := json.Marshal(obj)
+			if err != nil {
+				return "", types.NewJSONEncodeError(err)
+			}
+			return string(data), nil
+		},
 
 		// Time
 		"time_NowUnix":      func() int64 { return time.Now().Unix() },

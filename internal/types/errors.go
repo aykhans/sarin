@@ -208,7 +208,40 @@ func (e URLParseError) Unwrap() error {
 var (
 	ErrFileCacheNotInitialized = errors.New("file cache is not initialized")
 	ErrFormDataOddArgs         = errors.New("body_FormData requires an even number of arguments (key-value pairs)")
+	ErrJSONObjectOddArgs       = errors.New("json_Object requires an even number of arguments (key-value pairs)")
 )
+
+type JSONObjectKeyError struct {
+	Index int
+	Value any
+}
+
+func NewJSONObjectKeyError(index int, value any) JSONObjectKeyError {
+	return JSONObjectKeyError{Index: index, Value: value}
+}
+
+func (e JSONObjectKeyError) Error() string {
+	return fmt.Sprintf("json_Object key at index %d must be a string, got %T", e.Index, e.Value)
+}
+
+type JSONEncodeError struct {
+	Err error
+}
+
+func NewJSONEncodeError(err error) JSONEncodeError {
+	if err == nil {
+		err = errNoError
+	}
+	return JSONEncodeError{Err: err}
+}
+
+func (e JSONEncodeError) Error() string {
+	return "json_Encode failed: " + e.Err.Error()
+}
+
+func (e JSONEncodeError) Unwrap() error {
+	return e.Err
+}
 
 type TemplateParseError struct {
 	Err error

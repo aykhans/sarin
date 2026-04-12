@@ -12,6 +12,7 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
 - [General Functions](#general-functions)
     - [String Functions](#string-functions)
     - [Collection Functions](#collection-functions)
+    - [JSON Functions](#json-functions)
     - [Time Functions](#time-functions)
     - [Crypto Functions](#crypto-functions)
     - [Body Functions](#body-functions)
@@ -116,6 +117,33 @@ sarin -U http://example.com/users \
 | `slice_Join(slice []string, sep string)` | Join string slice with separator              | `{{ slice_Join (slice_Str "a" "b" "c") "-" }}` → `a-b-c` |
 | `slice_Int(values ...int)`               | Create int slice                              | `{{ slice_Int 1 2 3 }}`                                  |
 | `slice_Uint(values ...uint)`             | Create uint slice                             | `{{ slice_Uint 1 2 3 }}`                                 |
+
+### JSON Functions
+
+Build JSON payloads programmatically without manual quoting or escaping. `json_Object` is the ergonomic shortcut for flat objects; `json_Encode` marshals any value (slice, map, etc.) to a JSON string.
+
+| Function                    | Description                                                                                            | Example                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `json_Object(pairs ...any)` | Build an object from interleaved key-value pairs and return it as a JSON string. Keys must be strings. | `{{ json_Object "name" "Alice" "age" 30 }}`           |
+| `json_Encode(v any)`        | Marshal any value (slice, map, etc.) to a JSON string.                                                 | `{{ json_Encode (slice_Str "a" "b") }}` → `["a","b"]` |
+
+**Examples:**
+
+```yaml
+# Flat object with fake data
+body: '{{ json_Object "name" (fakeit_FirstName) "email" (fakeit_Email) }}'
+
+# Embed a solved captcha token
+body: '{{ json_Object "g-recaptcha-response" (twocaptcha_RecaptchaV2 "API_KEY" "SITE_KEY" "https://example.com") }}'
+
+# Encode a slice as a JSON array
+body: '{{ json_Encode (slice_Str "a" "b" "c") }}'
+
+# Encode a string dictionary (map[string]string)
+body: '{{ json_Encode (dict_Str "key1" "value1" "key2" "value2") }}'
+```
+
+> **Note:** Object keys are serialized in alphabetical order (Go's `encoding/json` default), not insertion order. For API payloads this is almost always fine because JSON key order is semantically irrelevant.
 
 ### Time Functions
 
