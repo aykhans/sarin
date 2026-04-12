@@ -208,7 +208,40 @@ func (e URLParseError) Unwrap() error {
 var (
 	ErrFileCacheNotInitialized = errors.New("file cache is not initialized")
 	ErrFormDataOddArgs         = errors.New("body_FormData requires an even number of arguments (key-value pairs)")
+	ErrJSONObjectOddArgs       = errors.New("json_Object requires an even number of arguments (key-value pairs)")
 )
+
+type JSONObjectKeyError struct {
+	Index int
+	Value any
+}
+
+func NewJSONObjectKeyError(index int, value any) JSONObjectKeyError {
+	return JSONObjectKeyError{Index: index, Value: value}
+}
+
+func (e JSONObjectKeyError) Error() string {
+	return fmt.Sprintf("json_Object key at index %d must be a string, got %T", e.Index, e.Value)
+}
+
+type JSONEncodeError struct {
+	Err error
+}
+
+func NewJSONEncodeError(err error) JSONEncodeError {
+	if err == nil {
+		err = errNoError
+	}
+	return JSONEncodeError{Err: err}
+}
+
+func (e JSONEncodeError) Error() string {
+	return "json_Encode failed: " + e.Err.Error()
+}
+
+func (e JSONEncodeError) Unwrap() error {
+	return e.Err
+}
 
 type TemplateParseError struct {
 	Err error
@@ -441,4 +474,72 @@ func NewScriptUnknownEngineError(engineType string) ScriptUnknownEngineError {
 
 func (e ScriptUnknownEngineError) Error() string {
 	return "unknown engine type: " + e.EngineType
+}
+
+// ======================================== Captcha ========================================
+
+var (
+	ErrCaptchaKeyEmpty = errors.New("captcha API key cannot be empty")
+	// ErrCaptchaProcessing is an internal sentinel returned by the captcha solver polling
+	// code to signal that a task is not yet solved and polling should continue.
+	// It should never be surfaced to callers outside of the captcha poll loop.
+	ErrCaptchaProcessing = errors.New("captcha task still processing")
+)
+
+type CaptchaAPIError struct {
+	Endpoint    string
+	Code        string
+	Description string
+}
+
+func NewCaptchaAPIError(endpoint, code, description string) CaptchaAPIError {
+	return CaptchaAPIError{Endpoint: endpoint, Code: code, Description: description}
+}
+
+func (e CaptchaAPIError) Error() string {
+	return fmt.Sprintf("captcha %s error: %s (%s)", e.Endpoint, e.Code, e.Description)
+}
+
+type CaptchaRequestError struct {
+	Endpoint string
+	Err      error
+}
+
+func NewCaptchaRequestError(endpoint string, err error) CaptchaRequestError {
+	if err == nil {
+		err = errNoError
+	}
+	return CaptchaRequestError{Endpoint: endpoint, Err: err}
+}
+
+func (e CaptchaRequestError) Error() string {
+	return fmt.Sprintf("captcha %s request failed: %v", e.Endpoint, e.Err)
+}
+
+func (e CaptchaRequestError) Unwrap() error {
+	return e.Err
+}
+
+type CaptchaTimeoutError struct {
+	TaskID string
+}
+
+func NewCaptchaTimeoutError(taskID string) CaptchaTimeoutError {
+	return CaptchaTimeoutError{TaskID: taskID}
+}
+
+func (e CaptchaTimeoutError) Error() string {
+	return fmt.Sprintf("captcha solving timed out (taskId: %s)", e.TaskID)
+}
+
+type CaptchaSolutionKeyError struct {
+	Key string
+}
+
+func NewCaptchaSolutionKeyError(key string) CaptchaSolutionKeyError {
+	return CaptchaSolutionKeyError{Key: key}
+}
+
+func (e CaptchaSolutionKeyError) Error() string {
+	return fmt.Sprintf("captcha solution missing expected key %q", e.Key)
 }
