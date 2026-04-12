@@ -14,10 +14,10 @@ import (
 
 const (
 	captchaPollInterval = 1 * time.Second
-	captchaTimeout      = 120 * time.Second
+	captchaPollTimeout  = 120 * time.Second
 )
 
-var captchaHTTPClient = &http.Client{Timeout: captchaTimeout}
+var captchaHTTPClient = &http.Client{Timeout: 5 * time.Second}
 
 // solveCaptcha creates a task on the given captcha service and polls until it is solved,
 // returning the extracted token from the solution object.
@@ -32,7 +32,7 @@ var captchaHTTPClient = &http.Client{Timeout: captchaTimeout}
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func solveCaptcha(baseURL, apiKey string, task map[string]any, solutionKey string, taskIDIsString bool) (string, error) {
 	if apiKey == "" {
@@ -98,15 +98,15 @@ func captchaCreateTask(baseURL, apiKey string, task map[string]any) (string, err
 }
 
 // captchaPollResult polls the getTaskResult endpoint at captchaPollInterval until the task
-// is solved, an error is returned by the service, or the overall captchaTimeout is hit.
+// is solved, an error is returned by the service, or the overall captchaPollTimeout is hit.
 //
 // It can return the following errors:
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
 //   - types.CaptchaSolutionKeyError
 func captchaPollResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsString bool) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), captchaTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), captchaPollTimeout)
 	defer cancel()
 
 	ticker := time.NewTicker(captchaPollInterval)
@@ -115,7 +115,7 @@ func captchaPollResult(baseURL, apiKey, taskID, solutionKey string, taskIDIsStri
 	for {
 		select {
 		case <-ctx.Done():
-			return "", types.NewCaptchaTimeoutError(taskID)
+			return "", types.NewCaptchaPollTimeoutError(taskID)
 		case <-ticker.C:
 			token, err := captchaGetTaskResult(baseURL, apiKey, taskID, solutionKey, taskIDIsString)
 			if errors.Is(err, types.ErrCaptchaProcessing) {
@@ -200,7 +200,7 @@ const twoCaptchaBaseURL = "https://api.2captcha.com"
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func twoCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, error) {
 	return solveCaptcha(twoCaptchaBaseURL, apiKey, map[string]any{
@@ -217,7 +217,7 @@ func twoCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, 
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func twoCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string) (string, error) {
 	task := map[string]any{
@@ -238,7 +238,7 @@ func twoCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction strin
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func twoCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, cData string) (string, error) {
 	task := map[string]any{
@@ -262,7 +262,7 @@ const antiCaptchaBaseURL = "https://api.anti-captcha.com"
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func antiCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, error) {
 	return solveCaptcha(antiCaptchaBaseURL, apiKey, map[string]any{
@@ -280,7 +280,7 @@ func antiCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string,
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func antiCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string) (string, error) {
 	task := map[string]any{
@@ -302,7 +302,7 @@ func antiCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction stri
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func antiCaptchaSolveHCaptcha(apiKey, websiteURL, websiteKey string) (string, error) {
 	return solveCaptcha(antiCaptchaBaseURL, apiKey, map[string]any{
@@ -319,7 +319,7 @@ func antiCaptchaSolveHCaptcha(apiKey, websiteURL, websiteKey string) (string, er
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func antiCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, cData string) (string, error) {
 	task := map[string]any{
@@ -343,7 +343,7 @@ const capSolverBaseURL = "https://api.capsolver.com"
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func capSolverSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, error) {
 	return solveCaptcha(capSolverBaseURL, apiKey, map[string]any{
@@ -360,7 +360,7 @@ func capSolverSolveRecaptchaV2(apiKey, websiteURL, websiteKey string) (string, e
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func capSolverSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string) (string, error) {
 	task := map[string]any{
@@ -381,7 +381,7 @@ func capSolverSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction string
 //   - types.ErrCaptchaKeyEmpty
 //   - types.CaptchaRequestError
 //   - types.CaptchaAPIError
-//   - types.CaptchaTimeoutError
+//   - types.CaptchaPollTimeoutError
 //   - types.CaptchaSolutionKeyError
 func capSolverSolveTurnstile(apiKey, websiteURL, websiteKey, cData string) (string, error) {
 	task := map[string]any{

@@ -520,15 +520,15 @@ func (e CaptchaRequestError) Unwrap() error {
 	return e.Err
 }
 
-type CaptchaTimeoutError struct {
+type CaptchaPollTimeoutError struct {
 	TaskID string
 }
 
-func NewCaptchaTimeoutError(taskID string) CaptchaTimeoutError {
-	return CaptchaTimeoutError{TaskID: taskID}
+func NewCaptchaPollTimeoutError(taskID string) CaptchaPollTimeoutError {
+	return CaptchaPollTimeoutError{TaskID: taskID}
 }
 
-func (e CaptchaTimeoutError) Error() string {
+func (e CaptchaPollTimeoutError) Error() string {
 	return fmt.Sprintf("captcha solving timed out (taskId: %s)", e.TaskID)
 }
 
