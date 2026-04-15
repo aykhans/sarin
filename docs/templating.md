@@ -236,7 +236,7 @@ Captcha functions solve a captcha challenge through a third-party solving servic
 
 The functions are organized by service: `twocaptcha_*`, `anticaptcha_*`, and `capsolver_*`. Each accepts the API key as the first argument so no global configuration is required — bring your own key and use any of the supported services per template.
 
-> **Important — performance and cost:**
+> **Important: performance and cost:**
 >
 > - **Each call is slow.** Solving typically takes ~5–60 seconds because the function blocks the template render until the third-party service returns a token. Internally the solver polls every 1s and gives up after 120s.
 > - **Each call costs money.** Every successful solve is billed by the captcha service (typically $0.001–$0.003 per solve). For high-volume tests, your captcha bill grows linearly with request count.
