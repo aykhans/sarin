@@ -1,6 +1,6 @@
 # Configuration
 
-Sarin supports environment variables, CLI flags, and YAML files. However, they are not exactly equivalent—YAML files have the most configuration options, followed by CLI flags, and then environment variables.
+Sarin supports environment variables, CLI flags, and YAML files. However, they are not exactly equivalent: YAML files have the most configuration options, followed by CLI flags, and then environment variables.
 
 When the same option is specified in multiple sources, the following priority order applies:
 
@@ -107,9 +107,9 @@ If all four files define `url`, the value from `config3.yaml` wins.
 
 **Merge behavior by field:**
 
-- **Scalar fields** (`url`, `requests`, `duration`, `timeout`, `concurrency`, etc.) — higher priority overrides lower priority
-- **Method and Body** — higher priority overrides lower priority (no merging)
-- **Headers, Params, Cookies, Proxies, Values, Lua, and Js** — accumulated across all config files
+- **Scalar fields** (`url`, `requests`, `duration`, `timeout`, `concurrency`, etc.): higher priority overrides lower priority
+- **Method and Body**: higher priority overrides lower priority (no merging)
+- **Headers, Params, Cookies, Proxies, Values, Lua, and Js**: accumulated across all config files
 
 ## URL
 
@@ -408,7 +408,7 @@ SARIN_VALUES="key1=value1"
 
 Lua script(s) for request transformation. Each script must define a global `transform` function that receives a request object and returns the modified request object. Scripts run after template rendering, before the request is sent.
 
-If multiple Lua scripts are provided, they are chained in order—the output of one becomes the input to the next. When both Lua and JavaScript scripts are specified, all Lua scripts run first, then all JavaScript scripts.
+If multiple Lua scripts are provided, they are chained in order-the output of one becomes the input to the next. When both Lua and JavaScript scripts are specified, all Lua scripts run first, then all JavaScript scripts.
 
 **Script sources:**
 
@@ -473,7 +473,7 @@ SARIN_LUA='function transform(req) req.headers["X-Custom"] = "my-value" return r
 
 JavaScript script(s) for request transformation. Each script must define a global `transform` function that receives a request object and returns the modified request object. Scripts run after template rendering, before the request is sent.
 
-If multiple JavaScript scripts are provided, they are chained in order—the output of one becomes the input to the next. When both Lua and JavaScript scripts are specified, all Lua scripts run first, then all JavaScript scripts.
+If multiple JavaScript scripts are provided, they are chained in order-the output of one becomes the input to the next. When both Lua and JavaScript scripts are specified, all Lua scripts run first, then all JavaScript scripts.
 
 **Script sources:**
 

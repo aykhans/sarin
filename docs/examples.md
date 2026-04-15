@@ -8,6 +8,7 @@ This guide provides practical examples for common Sarin use cases.
 - [Request-Based vs Duration-Based Tests](#request-based-vs-duration-based-tests)
 - [Headers, Cookies, and Parameters](#headers-cookies-and-parameters)
 - [Dynamic Requests with Templating](#dynamic-requests-with-templating)
+- [Solving Captchas](#solving-captchas)
 - [Request Bodies](#request-bodies)
 - [File Uploads](#file-uploads)
 - [Using Proxies](#using-proxies)
@@ -371,7 +372,29 @@ body: '{"ip": "{{ fakeit_IPv4Address }}", "timestamp": "{{ fakeit_Date }}", "act
 
 </details>
 
-> For the complete list of 320+ template functions, see the **[Templating Guide](templating.md)**.
+> For the complete list of 340+ template functions, see the **[Templating Guide](templating.md)**.
+
+## Solving Captchas
+
+Sarin can solve captchas through third-party services and embed the resulting token into the request. Three services are supported via dedicated template functions: **2Captcha**, **Anti-Captcha**, and **CapSolver**.
+
+**Solve a reCAPTCHA v2 and submit the token in the request body:**
+
+```sh
+sarin -U https://example.com/login -M POST -r 1 \
+  -B '{"g-recaptcha-response": "{{ twocaptcha_RecaptchaV2 "YOUR_API_KEY" "SITE_KEY" "https://example.com/login" }}"}'
+```
+
+**Reuse a single solved token across multiple requests via `values`:**
+
+```sh
+sarin -U https://example.com/api -M POST -r 5 \
+  -V 'TOKEN={{ anticaptcha_Turnstile "YOUR_API_KEY" "SITE_KEY" "https://example.com/api" }}' \
+  -H "X-Turnstile-Token: {{ .Values.TOKEN }}" \
+  -B '{"token": "{{ .Values.TOKEN }}"}'
+```
+
+> See the **[Templating Guide](templating.md#captcha-functions)** for the full list of captcha functions and per-service support.
 
 ## Request Bodies
 

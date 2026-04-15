@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"math/rand/v2"
 	"mime/multipart"
 	"strings"
@@ -84,6 +85,38 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"slice_Int":  func(values ...int) []int { return values },
 		"slice_Uint": func(values ...uint) []uint { return values },
 		"slice_Join": strings.Join,
+
+		// JSON
+		// json_Encode marshals any value to a JSON string.
+		// Usage: {{ json_Encode (dict_Str "key" "value") }}
+		"json_Encode": func(v any) (string, error) {
+			data, err := json.Marshal(v)
+			if err != nil {
+				return "", types.NewJSONEncodeError(err)
+			}
+			return string(data), nil
+		},
+		// json_Object builds a JSON object from interleaved key-value pairs and returns it
+		// as a JSON string. Keys must be strings; values may be any JSON-encodable type.
+		// Usage: {{ json_Object "name" "Alice" "age" 30 }}
+		"json_Object": func(pairs ...any) (string, error) {
+			if len(pairs)%2 != 0 {
+				return "", types.ErrJSONObjectOddArgs
+			}
+			obj := make(map[string]any, len(pairs)/2)
+			for i := 0; i < len(pairs); i += 2 {
+				key, ok := pairs[i].(string)
+				if !ok {
+					return "", types.NewJSONObjectKeyError(i, pairs[i])
+				}
+				obj[key] = pairs[i+1]
+			}
+			data, err := json.Marshal(obj)
+			if err != nil {
+				return "", types.NewJSONEncodeError(err)
+			}
+			return string(data), nil
+		},
 
 		// Time
 		"time_NowUnix":      func() int64 { return time.Now().Unix() },
@@ -574,8 +607,7 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"fakeit_ErrorHTTP":       func() string { return fakeit.ErrorHTTP().Error() },
 		"fakeit_ErrorHTTPClient": func() string { return fakeit.ErrorHTTPClient().Error() },
 		"fakeit_ErrorHTTPServer": func() string { return fakeit.ErrorHTTPServer().Error() },
-		// "fakeit_ErrorInput": func() string { return fakeit.ErrorInput().Error() },
-		"fakeit_ErrorRuntime": func() string { return fakeit.ErrorRuntime().Error() },
+		"fakeit_ErrorRuntime":    func() string { return fakeit.ErrorRuntime().Error() },
 
 		// Fakeit / School
 		"fakeit_School": fakeit.School,
@@ -585,6 +617,55 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 		"fakeit_SongName":   fakeit.SongName,
 		"fakeit_SongArtist": fakeit.SongArtist,
 		"fakeit_SongGenre":  fakeit.SongGenre,
+
+		// Captcha / 2Captcha
+		// Usage: {{ twocaptcha_RecaptchaV2 "API_KEY" "SITE_KEY" "https://example.com" }}
+		"twocaptcha_RecaptchaV2": func(apiKey, websiteKey, websiteURL string) (string, error) {
+			return twoCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey)
+		},
+		// Usage: {{ twocaptcha_RecaptchaV3 "API_KEY" "SITE_KEY" "https://example.com" "action" }}
+		"twocaptcha_RecaptchaV3": func(apiKey, websiteKey, websiteURL, pageAction string) (string, error) {
+			return twoCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction)
+		},
+		// Usage: {{ twocaptcha_Turnstile "API_KEY" "SITE_KEY" "https://example.com" }}
+		//        {{ twocaptcha_Turnstile "API_KEY" "SITE_KEY" "https://example.com" "cdata" }}
+		"twocaptcha_Turnstile": func(apiKey, websiteKey, websiteURL string, cData ...string) (string, error) {
+			return twoCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, firstOrEmpty(cData))
+		},
+
+		// Captcha / Anti-Captcha
+		// Usage: {{ anticaptcha_RecaptchaV2 "API_KEY" "SITE_KEY" "https://example.com" }}
+		"anticaptcha_RecaptchaV2": func(apiKey, websiteKey, websiteURL string) (string, error) {
+			return antiCaptchaSolveRecaptchaV2(apiKey, websiteURL, websiteKey)
+		},
+		// Usage: {{ anticaptcha_RecaptchaV3 "API_KEY" "SITE_KEY" "https://example.com" "action" }}
+		"anticaptcha_RecaptchaV3": func(apiKey, websiteKey, websiteURL, pageAction string) (string, error) {
+			return antiCaptchaSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction)
+		},
+		// Usage: {{ anticaptcha_HCaptcha "API_KEY" "SITE_KEY" "https://example.com" }}
+		"anticaptcha_HCaptcha": func(apiKey, websiteKey, websiteURL string) (string, error) {
+			return antiCaptchaSolveHCaptcha(apiKey, websiteURL, websiteKey)
+		},
+		// Usage: {{ anticaptcha_Turnstile "API_KEY" "SITE_KEY" "https://example.com" }}
+		//        {{ anticaptcha_Turnstile "API_KEY" "SITE_KEY" "https://example.com" "cdata" }}
+		"anticaptcha_Turnstile": func(apiKey, websiteKey, websiteURL string, cData ...string) (string, error) {
+			return antiCaptchaSolveTurnstile(apiKey, websiteURL, websiteKey, firstOrEmpty(cData))
+		},
+
+		// Captcha / CapSolver
+		// Usage: {{ capsolver_RecaptchaV2 "API_KEY" "SITE_KEY" "https://example.com" }}
+		"capsolver_RecaptchaV2": func(apiKey, websiteKey, websiteURL string) (string, error) {
+			return capSolverSolveRecaptchaV2(apiKey, websiteURL, websiteKey)
+		},
+		// Usage: {{ capsolver_RecaptchaV3 "API_KEY" "SITE_KEY" "https://example.com" "action" }}
+		"capsolver_RecaptchaV3": func(apiKey, websiteKey, websiteURL, pageAction string) (string, error) {
+			return capSolverSolveRecaptchaV3(apiKey, websiteURL, websiteKey, pageAction)
+		},
+		// Usage: {{ capsolver_Turnstile "API_KEY" "SITE_KEY" "https://example.com" }}
+		//        {{ capsolver_Turnstile "API_KEY" "SITE_KEY" "https://example.com" "cdata" }}
+		"capsolver_Turnstile": func(apiKey, websiteKey, websiteURL string, cData ...string) (string, error) {
+			return capSolverSolveTurnstile(apiKey, websiteURL, websiteKey, firstOrEmpty(cData))
+		},
 	}
 }
 
