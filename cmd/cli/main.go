@@ -15,7 +15,8 @@ import (
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	go listenForTermination(func() { cancel() })
+	stopCtrl := sarin.NewStopController(cancel)
+	go listenForTermination(stopCtrl.Stop)
 
 	combinedConfig := config.ReadAllConfigs()
 
@@ -73,7 +74,7 @@ func main() {
 		}),
 	)
 
-	srn.Start(ctx)
+	srn.Start(ctx, stopCtrl)
 
 	switch *combinedConfig.Output {
 	case config.ConfigOutputTypeNone:
@@ -87,9 +88,10 @@ func main() {
 	}
 }
 
-func listenForTermination(do func()) {
-	sigChan := make(chan os.Signal, 1)
+func listenForTermination(stop func()) {
+	sigChan := make(chan os.Signal, 4)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-	do()
+	for range sigChan {
+		stop()
+	}
 }
