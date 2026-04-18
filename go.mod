@@ -1,6 +1,6 @@
 module go.aykhans.me/sarin
 
-go 1.26.1
+go 1.26.2
 
 require (
 	github.com/brianvoe/gofakeit/v7 v7.14.1
