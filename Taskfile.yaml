@@ -3,7 +3,7 @@ version: "3"
 
 vars:
   BIN_DIR: ./bin
-  GOLANGCI_LINT_VERSION: v2.11.4
+  GOLANGCI_LINT_VERSION: v2.12.1
   GOLANGCI: "{{.BIN_DIR}}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}"
 
 tasks:
@@ -74,7 +74,7 @@ tasks:
       - test -f {{.GOLANGCI}}
     cmds:
       - rm -f {{.GOLANGCI}}
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b {{.BIN_DIR}} {{.GOLANGCI_LINT_VERSION}}
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b {{.BIN_DIR}} {{.GOLANGCI_LINT_VERSION}}
       - mv {{.BIN_DIR}}/golangci-lint {{.GOLANGCI}}
 
   docker-build:
