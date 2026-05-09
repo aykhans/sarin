@@ -11,7 +11,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/joho/godotenv v1.5.1
-	github.com/valyala/fasthttp v1.70.0
+	github.com/valyala/fasthttp v1.71.0
 	github.com/yuin/gopher-lua v1.1.2
 	go.aykhans.me/utils v1.0.7
 	go.yaml.in/yaml/v4 v4.0.0-rc.4
@@ -36,7 +36,7 @@ require (
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/google/pprof v0.0.0-20260302011040-a15ffb7f9dcc // indirect
 	github.com/gorilla/css v1.0.1 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
