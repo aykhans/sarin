@@ -719,7 +719,7 @@ proxy: socks5://proxy.example.com:1080
 
 </details>
 
-**Multiple proxies (load balanced):**
+**Multiple proxies (randomly cycled):**
 
 ```sh
 sarin -U http://example.com -r 1000 -c 10 \

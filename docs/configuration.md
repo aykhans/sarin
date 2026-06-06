@@ -131,7 +131,7 @@ sarin -U "http://example.com/users/{{ fakeit_UUID }}" -r 1000 -c 10
 
 ## Method
 
-HTTP method(s). If multiple values are provided, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
+HTTP method(s). If multiple values are provided, Sarin starts at a random index and cycles through them in order. Once the cycle completes, it picks a new random starting point. Supports [templating](templating.md).
 
 **YAML example:**
 
@@ -204,7 +204,7 @@ Skip TLS certificate verification.
 
 ## Body
 
-Request body. If multiple values are provided, Sarin cycles through them in order, starting from a random index for each request. Supports [templating](templating.md).
+Request body. If multiple values are provided, Sarin starts at a random index and cycles through them in order. Once the cycle completes, it picks a new random starting point. Supports [templating](templating.md).
 
 **YAML example:**
 
@@ -344,7 +344,7 @@ SARIN_COOKIE="key1=value1"
 
 ## Proxy
 
-Proxy URL(s). If multiple values are provided, Sarin cycles through them in order, starting from a random index for each request.
+Proxy URL(s). If multiple values are provided, Sarin starts at a random index and cycles through them in order. Once the cycle completes, it picks a new random starting point.
 
 Supported protocols: `http`, `https`, `socks5`, `socks5h`
 
