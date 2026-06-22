@@ -14,7 +14,7 @@ require (
 	github.com/valyala/fasthttp v1.71.0
 	github.com/yuin/gopher-lua v1.1.2
 	go.aykhans.me/utils v1.0.7
-	go.yaml.in/yaml/v4 v4.0.0-rc.5
+	go.yaml.in/yaml/v4 v4.0.0-rc.6
 	golang.org/x/net v0.56.0
 )
 
