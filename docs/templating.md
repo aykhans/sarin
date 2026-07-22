@@ -183,19 +183,19 @@ body: '{{ body_FormData "image" "@https://example.com/photo.jpg" }}'
 
 # Mixed text fields and files
 body: |
-  {{ body_FormData
-     "title" "My Report"
-     "author" "John Doe"
-     "cover" "@/path/to/cover.jpg"
-     "document" "@/path/to/report.pdf"
-  }}
+    {{ body_FormData
+       "title" "My Report"
+       "author" "John Doe"
+       "cover" "@/path/to/cover.jpg"
+       "document" "@/path/to/report.pdf"
+    }}
 
 # Multiple files with same field name
 body: |
-  {{ body_FormData
-     "files" "@/path/to/file1.pdf"
-     "files" "@/path/to/file2.pdf"
-  }}
+    {{ body_FormData
+       "files" "@/path/to/file1.pdf"
+       "files" "@/path/to/file2.pdf"
+    }}
 
 # Escape @ for literal value (sends "@username")
 body: '{{ body_FormData "twitter" "@@username" }}'
@@ -226,7 +226,7 @@ body: '{"file": "{{ file_Base64 "/path/to/document.pdf" }}", "filename": "docume
 body: '{"image": "{{ file_Base64 "https://example.com/photo.jpg" }}"}'
 
 # Combined with values for reuse
-values: "FILE_DATA={{ file_Base64 \"/path/to/file.bin\" }}"
+values: 'FILE_DATA={{ file_Base64 "/path/to/file.bin" }}'
 body: '{"data": "{{ .Values.FILE_DATA }}"}'
 ```
 
@@ -234,7 +234,7 @@ body: '{"data": "{{ .Values.FILE_DATA }}"}'
 
 Captcha functions solve a captcha challenge through a third-party solving service and return the resulting token, which can then be embedded directly into a request. They are intended for load testing endpoints protected by reCAPTCHA, hCaptcha, or Cloudflare Turnstile.
 
-The functions are organized by service: `twocaptcha_*`, `anticaptcha_*`, and `capsolver_*`. Each accepts the API key as the first argument so no global configuration is required — bring your own key and use any of the supported services per template.
+The functions are organized by service: `twocaptcha_*`, `anticaptcha_*`, and `capsolver_*`. Each accepts the API key as the first argument so no global configuration is required. Bring your own key and use any of the supported services per template.
 
 > **Important: performance and cost:**
 >

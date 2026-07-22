@@ -26,7 +26,9 @@ Use `-s` or `--show-config` to see the final merged configuration before sending
 | [Concurrency](#concurrency) | `concurrency`<br>(number)           | `-concurrency` / `-c`<br>(number)            | `SARIN_CONCURRENCY`<br>(number)  | `1`     | Number of concurrent workers |
 | [Requests](#requests)       | `requests`<br>(number)              | `-requests` / `-r`<br>(number)               | `SARIN_REQUESTS`<br>(number)     | -       | Total requests to send       |
 | [Duration](#duration)       | `duration`<br>(duration)            | `-duration` / `-d`<br>(duration)             | `SARIN_DURATION`<br>(duration)   | -       | Test duration                |
-| [Quiet](#quiet)             | `quiet`<br>(boolean)                | `-quiet` / `-q`<br>(boolean)                 | `SARIN_QUIET`<br>(boolean)       | `false` | Hide progress bar and logs   |
+| [Log Level](#log-level)     | `logLevel`<br>(string)              | `-log-level` / `-l`<br>(string)              | `SARIN_LOG_LEVEL`<br>(string)    | `error` | Runtime log levels to emit   |
+| [Log File](#log-file)       | `logFile`<br>(string)               | `-log-file` / `-w`<br>(string)               | `SARIN_LOG_FILE`<br>(string)     | -       | Write runtime logs to a file |
+| [Progress](#progress)       | `progress`<br>(string)              | `-progress` / `-p`<br>(string)               | `SARIN_PROGRESS`<br>(string)     | `bar`   | Progress display (bar/none)  |
 | [Output](#output)           | `output`<br>(string)                | `-output` / `-o`<br>(string)                 | `SARIN_OUTPUT`<br>(string)       | `table` | Output format for stats      |
 | [Dry Run](#dry-run)         | `dryRun`<br>(boolean)               | `-dry-run` / `-z`<br>(boolean)               | `SARIN_DRY_RUN`<br>(boolean)     | `false` | Generate without sending     |
 | [Insecure](#insecure)       | `insecure`<br>(boolean)             | `-insecure` / `-I`<br>(boolean)              | `SARIN_INSECURE`<br>(boolean)    | `false` | Skip TLS verification        |
@@ -131,7 +133,7 @@ sarin -U "http://example.com/users/{{ fakeit_UUID }}" -r 1000 -c 10
 
 ## Method
 
-HTTP method(s). If multiple values are provided, Sarin starts at a random index and cycles through them in order. Once the cycle completes, it picks a new random starting point. Supports [templating](templating.md).
+HTTP method(s). Defaults to `GET`. If multiple values are provided, Sarin starts at a random index and cycles through them in order. Once the cycle completes, it picks a new random starting point. Supports [templating](templating.md).
 
 **YAML example:**
 
@@ -141,9 +143,9 @@ method: GET
 # OR
 
 method:
-  - GET
-  - POST
-  - PUT
+    - GET
+    - POST
+    - PUT
 ```
 
 **CLI example:**
@@ -160,7 +162,7 @@ SARIN_METHOD=GET
 
 ## Timeout
 
-Request timeout. Must be greater than 0.
+Request timeout. Must be greater than 0. Defaults to `10s`.
 
 Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
 
@@ -168,7 +170,7 @@ Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
 
 ## Concurrency
 
-Number of concurrent workers. Must be between 1 and 100,000,000.
+Number of concurrent workers. Must be between 1 and 100,000,000. Defaults to `1`.
 
 ## Requests
 
@@ -182,15 +184,34 @@ Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
 
 **Examples:** `1m30s`, `25s`, `1h`
 
-## Quiet
+## Log Level
 
-Hide the progress bar and runtime logs.
+Runtime log levels to emit, comma-separated. Valid levels: `info`, `error`. Defaults to `error`.
+
+- `error`: errors that occur while generating or sending a request
+- `info`: every completed response
+
+Leave empty to disable logging entirely.
+
+**Examples:** `error` (only errors), `info` (only responses), `info,error` (both)
+
+## Log File
+
+Write runtime logs to this file instead of the terminal or stderr. The parent directory must exist.
+
+```sh
+sarin -U http://example.com -r 1000 --log-file ./run.log
+```
+
+## Progress
+
+Progress display. Valid values: `bar` (default), `none`. Use `none` to hide the progress bar.
 
 ## Output
 
 Output format for response statistics.
 
-Valid formats: `table`, `json`, `yaml`, `none`
+Valid formats: `table` (default), `json`, `yaml`, `none`
 
 Using `none` disables output and reduces memory usage since response statistics are not stored.
 
@@ -214,9 +235,9 @@ body: '{"product": "car"}'
 # OR
 
 body:
-  - '{"product": "car"}'
-  - '{"product": "phone"}'
-  - '{"product": "watch"}'
+    - '{"product": "car"}'
+    - '{"product": "phone"}'
+    - '{"product": "watch"}'
 ```
 
 **CLI example:**
@@ -241,19 +262,19 @@ When the same key appears as **separate entries** (in CLI or config file), all v
 
 ```yaml
 params:
-  key1: value1
-  key2: [value2, value3]  # cycles between value2 and value3
+    key1: value1
+    key2: [value2, value3] # cycles between value2 and value3
 
 # OR
 
 params:
-  - key1: value1
-  - key2: [value2, value3]  # cycles between value2 and value3
+    - key1: value1
+    - key2: [value2, value3] # cycles between value2 and value3
 
 # To send both values in every request, use separate entries:
 params:
-  - key2: value2
-  - key2: value3  # both sent in every request
+    - key2: value2
+    - key2: value3 # both sent in every request
 ```
 
 **CLI example:**
@@ -278,19 +299,19 @@ When the same key appears as **separate entries** (in CLI or config file), all v
 
 ```yaml
 headers:
-  key1: value1
-  key2: [value2, value3]  # cycles between value2 and value3
+    key1: value1
+    key2: [value2, value3] # cycles between value2 and value3
 
 # OR
 
 headers:
-  - key1: value1
-  - key2: [value2, value3]  # cycles between value2 and value3
+    - key1: value1
+    - key2: [value2, value3] # cycles between value2 and value3
 
 # To send both values in every request, use separate entries:
 headers:
-  - key2: value2
-  - key2: value3  # both sent in every request
+    - key2: value2
+    - key2: value3 # both sent in every request
 ```
 
 **CLI example:**
@@ -315,19 +336,19 @@ When the same key appears as **separate entries** (in CLI or config file), all v
 
 ```yaml
 cookies:
-  key1: value1
-  key2: [value2, value3]  # cycles between value2 and value3
+    key1: value1
+    key2: [value2, value3] # cycles between value2 and value3
 
 # OR
 
 cookies:
-  - key1: value1
-  - key2: [value2, value3]  # cycles between value2 and value3
+    - key1: value1
+    - key2: [value2, value3] # cycles between value2 and value3
 
 # To send both values in every request, use separate entries:
 cookies:
-  - key2: value2
-  - key2: value3  # both sent in every request
+    - key2: value2
+    - key2: value3 # both sent in every request
 ```
 
 **CLI example:**
@@ -356,9 +377,9 @@ proxy: http://proxy1.com
 # OR
 
 proxy:
-  - http://proxy1.com
-  - socks5://proxy2.com
-  - socks5h://proxy3.com
+    - http://proxy1.com
+    - socks5://proxy2.com
+    - socks5h://proxy3.com
 ```
 
 **CLI example:**
@@ -387,9 +408,9 @@ values: "key=value"
 # OR
 
 values: |
-  key1=value1
-  key2=value2
-  key3=value3
+    key1=value1
+    key2=value2
+    key3=value3
 ```
 
 **CLI example:**

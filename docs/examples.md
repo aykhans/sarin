@@ -13,6 +13,7 @@ This guide provides practical examples for common Sarin use cases.
 - [File Uploads](#file-uploads)
 - [Using Proxies](#using-proxies)
 - [Output Formats](#output-formats)
+- [Runtime Logging](#runtime-logging)
 - [Docker Usage](#docker-usage)
 - [Dry Run Mode](#dry-run-mode)
 - [Show Configuration](#show-configuration)
@@ -836,10 +837,10 @@ output: none
 
 </details>
 
-**Quiet mode (hide progress bar):**
+**Hide the progress bar:**
 
 ```sh
-sarin -U http://example.com -r 1000 -c 10 -q
+sarin -U http://example.com -r 1000 -c 10 -p none
 ```
 
 <details>
@@ -849,7 +850,42 @@ sarin -U http://example.com -r 1000 -c 10 -q
 url: http://example.com
 requests: 1000
 concurrency: 10
-quiet: true
+progress: none
+```
+
+</details>
+
+## Runtime Logging
+
+`--log-level` selects which runtime logs Sarin emits (comma-separated `info` and `error`, default `error`). `error` covers request and generation errors, `info` covers every completed response (status, duration, headers, body). Logs appear in the progress log box on an interactive terminal, go to stderr when piped, or go to a file with `--log-file`.
+
+**Log responses and errors:**
+
+```sh
+sarin -U http://example.com -r 1000 -c 10 -l info,error
+```
+
+**Write logs to a file (the progress bar stays on screen):**
+
+```sh
+sarin -U http://example.com -r 1000 -c 10 -l info --log-file ./run.log
+```
+
+**Capture logs while keeping results on stdout:**
+
+```sh
+sarin -U http://example.com -r 1000 -l info -o json > stats.json 2> run.log
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com
+requests: 1000
+concurrency: 10
+logLevel: info,error
+logFile: ./run.log
 ```
 
 </details>
