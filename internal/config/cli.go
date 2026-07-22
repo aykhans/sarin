@@ -27,7 +27,9 @@ Flags:
     -c, -concurrency   uint       Number of concurrent requests (default %d)
     -r, -requests      uint       Number of total requests
     -d, -duration      time       Maximum duration for the test (e.g. 30s, 1m, 5h)
-    -q, -quiet         bool       Hide the progress bar and runtime logs (default %v)
+    -l, -log-level     string     Runtime log levels to emit, comma-separated (possible values: info, error) (default %s)
+    -w, -log-file      string     Write runtime logs to this file instead of the terminal/stderr
+    -p, -progress      string     Progress display (possible values: bar, none) (default '%v')
     -o, -output        string     Output format (possible values: table, json, yaml, none) (default '%v')
     -z, -dry-run       bool       Run without sending requests (default %v)
 
@@ -88,7 +90,9 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		concurrency  uint
 		requestCount uint64
 		duration     time.Duration
-		quiet        bool
+		logLevel     string
+		logFile      string
+		progress     string
 		output       string
 		dryRun       bool
 
@@ -127,8 +131,14 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		flagSet.DurationVar(&duration, "duration", 0, "Maximum duration for the test")
 		flagSet.DurationVar(&duration, "d", 0, "Maximum duration for the test")
 
-		flagSet.BoolVar(&quiet, "quiet", false, "Hide the progress bar and runtime logs")
-		flagSet.BoolVar(&quiet, "q", false, "Hide the progress bar and runtime logs")
+		flagSet.StringVar(&logLevel, "log-level", "", "Runtime log levels to emit, comma-separated (possible values: info, error)")
+		flagSet.StringVar(&logLevel, "l", "", "Runtime log levels to emit, comma-separated (possible values: info, error)")
+
+		flagSet.StringVar(&logFile, "log-file", "", "Write runtime logs to this file instead of the terminal/stderr")
+		flagSet.StringVar(&logFile, "w", "", "Write runtime logs to this file instead of the terminal/stderr")
+
+		flagSet.StringVar(&progress, "progress", "", "Progress display (possible values: bar, none)")
+		flagSet.StringVar(&progress, "p", "", "Progress display (possible values: bar, none)")
 
 		flagSet.StringVar(&output, "output", "", "Output format (possible values: table, json, yaml, none)")
 		flagSet.StringVar(&output, "o", "", "Output format (possible values: table, json, yaml, none)")
@@ -205,8 +215,12 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 			config.Requests = new(requestCount)
 		case "duration", "d":
 			config.Duration = new(duration)
-		case "quiet", "q":
-			config.Quiet = new(quiet)
+		case "log-level", "l":
+			config.LogLevel = new(logLevel)
+		case "log-file", "w":
+			config.LogFile = new(logFile)
+		case "progress", "p":
+			config.Progress = new(ConfigProgressType(progress))
 		case "output", "o":
 			config.Output = new(ConfigOutputType(output))
 		case "dry-run", "z":
@@ -265,7 +279,8 @@ func (parser ConfigCLIParser) PrintHelp() {
 		cliUsageText+"\n",
 		Defaults.ShowConfig,
 		Defaults.Concurrency,
-		Defaults.Quiet,
+		Defaults.LogLevel,
+		Defaults.Progress,
 		Defaults.Output,
 		Defaults.DryRun,
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/term"
+	"go.aykhans.me/sarin/internal/sarin"
 	"go.aykhans.me/sarin/internal/script"
 	"go.aykhans.me/sarin/internal/types"
 	"go.aykhans.me/sarin/internal/version"
@@ -31,25 +33,28 @@ var Defaults = struct {
 	RequestTimeout time.Duration
 	Concurrency    uint
 	ShowConfig     bool
-	Quiet          bool
+	Progress       ConfigProgressType
 	Insecure       bool
 	Output         ConfigOutputType
 	DryRun         bool
+	LogLevel       string
 }{
 	UserAgent:      "Sarin/" + version.Version,
 	Method:         "GET",
 	RequestTimeout: time.Second * 10,
 	Concurrency:    1,
 	ShowConfig:     false,
-	Quiet:          false,
+	Progress:       ConfigProgressTypeBar,
 	Insecure:       false,
 	Output:         ConfigOutputTypeTable,
 	DryRun:         false,
+	LogLevel:       "error",
 }
 
 var (
 	ValidProxySchemes      = []string{"http", "https", "socks5", "socks5h"}
 	ValidRequestURLSchemes = []string{"http", "https"}
+	ValidLogLevels         = []string{"info", "error"}
 )
 
 var (
@@ -70,27 +75,36 @@ var (
 	ConfigOutputTypeNone  ConfigOutputType = "none"
 )
 
+type ConfigProgressType string
+
+var (
+	ConfigProgressTypeBar  ConfigProgressType = "bar"
+	ConfigProgressTypeNone ConfigProgressType = "none"
+)
+
 type Config struct {
-	ShowConfig  *bool              `yaml:"showConfig,omitempty"`
-	Files       []types.ConfigFile `yaml:"files,omitempty"`
-	Methods     []string           `yaml:"methods,omitempty"`
-	URL         *url.URL           `yaml:"url,omitempty"`
-	Timeout     *time.Duration     `yaml:"timeout,omitempty"`
-	Concurrency *uint              `yaml:"concurrency,omitempty"`
-	Requests    *uint64            `yaml:"requests,omitempty"`
-	Duration    *time.Duration     `yaml:"duration,omitempty"`
-	Quiet       *bool              `yaml:"quiet,omitempty"`
-	Output      *ConfigOutputType  `yaml:"output,omitempty"`
-	Insecure    *bool              `yaml:"insecure,omitempty"`
-	DryRun      *bool              `yaml:"dryRun,omitempty"`
-	Params      types.Params       `yaml:"params,omitempty"`
-	Headers     types.Headers      `yaml:"headers,omitempty"`
-	Cookies     types.Cookies      `yaml:"cookies,omitempty"`
-	Bodies      []string           `yaml:"bodies,omitempty"`
-	Proxies     types.Proxies      `yaml:"proxies,omitempty"`
-	Values      []string           `yaml:"values,omitempty"`
-	Lua         []string           `yaml:"lua,omitempty"`
-	Js          []string           `yaml:"js,omitempty"`
+	ShowConfig  *bool               `yaml:"showConfig,omitempty"`
+	Files       []types.ConfigFile  `yaml:"files,omitempty"`
+	Methods     []string            `yaml:"methods,omitempty"`
+	URL         *url.URL            `yaml:"url,omitempty"`
+	Timeout     *time.Duration      `yaml:"timeout,omitempty"`
+	Concurrency *uint               `yaml:"concurrency,omitempty"`
+	Requests    *uint64             `yaml:"requests,omitempty"`
+	Duration    *time.Duration      `yaml:"duration,omitempty"`
+	Progress    *ConfigProgressType `yaml:"progress,omitempty"`
+	Output      *ConfigOutputType   `yaml:"output,omitempty"`
+	Insecure    *bool               `yaml:"insecure,omitempty"`
+	DryRun      *bool               `yaml:"dryRun,omitempty"`
+	Params      types.Params        `yaml:"params,omitempty"`
+	Headers     types.Headers       `yaml:"headers,omitempty"`
+	Cookies     types.Cookies       `yaml:"cookies,omitempty"`
+	Bodies      []string            `yaml:"bodies,omitempty"`
+	Proxies     types.Proxies       `yaml:"proxies,omitempty"`
+	Values      []string            `yaml:"values,omitempty"`
+	Lua         []string            `yaml:"lua,omitempty"`
+	Js          []string            `yaml:"js,omitempty"`
+	LogLevel    *string             `yaml:"logLevel,omitempty"`
+	LogFile     *string             `yaml:"logFile,omitempty"`
 }
 
 func (config Config) MarshalYAML() (any, error) {
@@ -173,8 +187,8 @@ func (config Config) MarshalYAML() (any, error) {
 	if config.Duration != nil {
 		addField(content, "duration", toNode(*config.Duration), "")
 	}
-	if config.Quiet != nil {
-		addField(content, "quiet", toNode(*config.Quiet), "")
+	if config.Progress != nil {
+		addField(content, "progress", toNode(string(*config.Progress)), "")
 	}
 	if config.Output != nil {
 		addField(content, "output", toNode(string(*config.Output)), "")
@@ -221,6 +235,13 @@ func (config Config) MarshalYAML() (any, error) {
 	addStringSlice(content, "values", config.Values, false)
 	addStringSlice(content, "lua", config.Lua, false)
 	addStringSlice(content, "js", config.Js, false)
+	if config.LogLevel != nil {
+		addField(content, "logLevel", toNode(*config.LogLevel), "")
+	}
+
+	if config.LogFile != nil {
+		addField(content, "logFile", toNode(*config.LogFile), "")
+	}
 
 	return root, nil
 }
@@ -295,8 +316,8 @@ func (config *Config) Merge(newConfig *Config) {
 	if newConfig.ShowConfig != nil {
 		config.ShowConfig = newConfig.ShowConfig
 	}
-	if newConfig.Quiet != nil {
-		config.Quiet = newConfig.Quiet
+	if newConfig.Progress != nil {
+		config.Progress = newConfig.Progress
 	}
 	if newConfig.Output != nil {
 		config.Output = newConfig.Output
@@ -331,6 +352,12 @@ func (config *Config) Merge(newConfig *Config) {
 	if len(newConfig.Js) != 0 {
 		config.Js = append(config.Js, newConfig.Js...)
 	}
+	if newConfig.LogLevel != nil {
+		config.LogLevel = newConfig.LogLevel
+	}
+	if newConfig.LogFile != nil {
+		config.LogFile = newConfig.LogFile
+	}
 }
 
 func (config *Config) SetDefaults() {
@@ -361,8 +388,8 @@ func (config *Config) SetDefaults() {
 	if config.ShowConfig == nil {
 		config.ShowConfig = new(Defaults.ShowConfig)
 	}
-	if config.Quiet == nil {
-		config.Quiet = new(Defaults.Quiet)
+	if config.Progress == nil {
+		config.Progress = new(Defaults.Progress)
 	}
 	if config.Insecure == nil {
 		config.Insecure = new(Defaults.Insecure)
@@ -376,6 +403,14 @@ func (config *Config) SetDefaults() {
 
 	if config.Output == nil {
 		config.Output = new(Defaults.Output)
+	}
+
+	if config.LogLevel == nil {
+		config.LogLevel = new(Defaults.LogLevel)
+	}
+
+	if config.LogFile == nil {
+		config.LogFile = new("")
 	}
 }
 
@@ -426,8 +461,21 @@ func (config Config) Validate() error {
 		validationErrors = append(validationErrors, types.NewFieldValidationError("ShowConfig", "", errors.New("showConfig field is required")))
 	}
 
-	if config.Quiet == nil {
-		validationErrors = append(validationErrors, types.NewFieldValidationError("Quiet", "", errors.New("quiet field is required")))
+	if config.Progress == nil {
+		validationErrors = append(validationErrors, types.NewFieldValidationError("Progress", "", errors.New("progress field is required")))
+	} else {
+		switch *config.Progress {
+		case ConfigProgressTypeBar, ConfigProgressTypeNone:
+		default:
+			validationErrors = append(
+				validationErrors,
+				types.NewFieldValidationError(
+					"Progress",
+					string(*config.Progress),
+					fmt.Errorf("progress must be one of: %s, %s", ConfigProgressTypeBar, ConfigProgressTypeNone),
+				),
+			)
+		}
 	}
 
 	if config.Output == nil {
@@ -458,6 +506,36 @@ func (config Config) Validate() error {
 
 	if config.DryRun == nil {
 		validationErrors = append(validationErrors, types.NewFieldValidationError("DryRun", "", errors.New("dryRun field is required")))
+	}
+
+	if config.LogLevel != nil {
+		for i, level := range sarin.SplitLogLevels(*config.LogLevel) {
+			if !slices.Contains(ValidLogLevels, level) {
+				validationErrors = append(
+					validationErrors,
+					types.NewFieldValidationError(
+						fmt.Sprintf("LogLevel[%d]", i),
+						level,
+						fmt.Errorf("log level must be one of: %s", strings.Join(ValidLogLevels, ", ")),
+					),
+				)
+			}
+		}
+	}
+
+	if config.LogFile != nil && *config.LogFile != "" {
+		dir := filepath.Dir(*config.LogFile)
+		if info, err := os.Stat(dir); err != nil {
+			validationErrors = append(
+				validationErrors,
+				types.NewFieldValidationError("LogFile", *config.LogFile, fmt.Errorf("parent directory %q is not accessible", dir)),
+			)
+		} else if !info.IsDir() {
+			validationErrors = append(
+				validationErrors,
+				types.NewFieldValidationError("LogFile", *config.LogFile, fmt.Errorf("parent path %q is not a directory", dir)),
+			)
+		}
 	}
 
 	for i, proxy := range config.Proxies {

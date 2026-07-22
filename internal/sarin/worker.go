@@ -29,11 +29,12 @@ func statusCodeToString(code int) string {
 	return strconv.Itoa(code)
 }
 
-func (q sarin) Worker(
+func (s sarin) Worker(
 	jobs <-chan struct{},
 	hostClientGenerator HostClientGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
+	sendRespLog respLogger,
 ) {
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
@@ -43,9 +44,9 @@ func (q sarin) Worker(
 	// Create script transformer for this worker (engines are not thread-safe)
 	// Scripts are pre-validated in NewSarin, so this should not fail
 	var scriptTransformer *script.Transformer
-	if !q.scriptChain.IsEmpty() {
+	if !s.scriptChain.IsEmpty() {
 		var err error
-		scriptTransformer, err = q.scriptChain.NewTransformer()
+		scriptTransformer, err = s.scriptChain.NewTransformer()
 		if err != nil {
 			panic(err)
 		}
@@ -53,79 +54,84 @@ func (q sarin) Worker(
 	}
 
 	requestGenerator, isDynamic := NewRequestGenerator(
-		q.methods, q.requestURL, q.params, q.headers, q.cookies, q.bodies, q.values, q.fileCache, scriptTransformer,
+		s.methods, s.requestURL, s.params, s.headers, s.cookies, s.bodies, s.values, s.fileCache, scriptTransformer,
 	)
 
-	if q.dryRun {
+	if s.dryRun {
 		switch {
-		case q.collectStats && isDynamic:
-			q.workerDryRunStatsWithDynamic(jobs, req, requestGenerator, counter, sendMessage)
-		case q.collectStats && !isDynamic:
-			q.workerDryRunStatsWithStatic(jobs, req, requestGenerator, counter, sendMessage)
-		case !q.collectStats && isDynamic:
-			q.workerDryRunNoStatsWithDynamic(jobs, req, requestGenerator, counter, sendMessage)
+		case s.collectStats && isDynamic:
+			s.workerDryRunStatsWithDynamic(jobs, req, requestGenerator, counter, sendLog)
+		case s.collectStats && !isDynamic:
+			s.workerDryRunStatsWithStatic(jobs, req, requestGenerator, counter, sendLog)
+		case !s.collectStats && isDynamic:
+			s.workerDryRunNoStatsWithDynamic(jobs, req, requestGenerator, counter, sendLog)
 		default:
-			q.workerDryRunNoStatsWithStatic(jobs, req, requestGenerator, counter, sendMessage)
+			s.workerDryRunNoStatsWithStatic(jobs, req, requestGenerator, counter, sendLog)
 		}
 	} else {
 		switch {
-		case q.collectStats && isDynamic:
-			q.workerStatsWithDynamic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendMessage)
-		case q.collectStats && !isDynamic:
-			q.workerStatsWithStatic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendMessage)
-		case !q.collectStats && isDynamic:
-			q.workerNoStatsWithDynamic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendMessage)
+		case s.collectStats && isDynamic:
+			s.workerStatsWithDynamic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendLog, sendRespLog)
+		case s.collectStats && !isDynamic:
+			s.workerStatsWithStatic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendLog, sendRespLog)
+		case !s.collectStats && isDynamic:
+			s.workerNoStatsWithDynamic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendLog, sendRespLog)
 		default:
-			q.workerNoStatsWithStatic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendMessage)
+			s.workerNoStatsWithStatic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendLog, sendRespLog)
 		}
 	}
 }
 
-func (q sarin) workerStatsWithDynamic(
+func (s sarin) workerStatsWithDynamic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	resp *fasthttp.Response,
 	requestGenerator RequestGenerator,
 	hostClientGenerator HostClientGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
+	sendRespLog respLogger,
 ) {
 	for range jobs {
 		req.Reset()
 		resp.Reset()
 
 		if err := requestGenerator(req); err != nil {
-			q.responses.Add(err.Error(), 0)
-			sendMessage(runtimeMessageLevelError, err.Error())
+			s.responses.Add(err.Error(), 0)
+			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 			continue
 		}
 
 		startTime := time.Now()
-		err := hostClientGenerator().DoTimeout(req, resp, q.timeout)
+		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
+		respDuration := time.Since(startTime)
+
 		if err != nil {
-			q.responses.Add(err.Error(), time.Since(startTime))
+			s.responses.Add(err.Error(), respDuration)
 		} else {
-			q.responses.Add(statusCodeToString(resp.StatusCode()), time.Since(startTime))
+			s.responses.Add(statusCodeToString(resp.StatusCode()), respDuration)
+			sendRespLog(respDuration, resp)
 		}
 		counter.Add(1)
 	}
 }
 
-func (q sarin) workerStatsWithStatic(
+func (s sarin) workerStatsWithStatic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	resp *fasthttp.Response,
 	requestGenerator RequestGenerator,
 	hostClientGenerator HostClientGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
+	sendRespLog respLogger,
 ) {
 	if err := requestGenerator(req); err != nil {
 		// Static request generation failed - record all jobs as errors
 		for range jobs {
-			q.responses.Add(err.Error(), 0)
-			sendMessage(runtimeMessageLevelError, err.Error())
+			s.responses.Add(err.Error(), 0)
+			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 		}
 		return
@@ -135,49 +141,57 @@ func (q sarin) workerStatsWithStatic(
 		resp.Reset()
 
 		startTime := time.Now()
-		err := hostClientGenerator().DoTimeout(req, resp, q.timeout)
+		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
+		respDuration := time.Since(startTime)
 		if err != nil {
-			q.responses.Add(err.Error(), time.Since(startTime))
+			s.responses.Add(err.Error(), respDuration)
 		} else {
-			q.responses.Add(statusCodeToString(resp.StatusCode()), time.Since(startTime))
+			s.responses.Add(statusCodeToString(resp.StatusCode()), respDuration)
+			sendRespLog(respDuration, resp)
 		}
 		counter.Add(1)
 	}
 }
 
-func (q sarin) workerNoStatsWithDynamic(
+func (s sarin) workerNoStatsWithDynamic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	resp *fasthttp.Response,
 	requestGenerator RequestGenerator,
 	hostClientGenerator HostClientGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
+	sendRespLog respLogger,
 ) {
 	for range jobs {
 		req.Reset()
 		resp.Reset()
 		if err := requestGenerator(req); err != nil {
-			sendMessage(runtimeMessageLevelError, err.Error())
+			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 			continue
 		}
-		_ = hostClientGenerator().DoTimeout(req, resp, q.timeout)
+		startTime := time.Now()
+		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
+		if err == nil {
+			sendRespLog(time.Since(startTime), resp)
+		}
 		counter.Add(1)
 	}
 }
 
-func (q sarin) workerNoStatsWithStatic(
+func (s sarin) workerNoStatsWithStatic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	resp *fasthttp.Response,
 	requestGenerator RequestGenerator,
 	hostClientGenerator HostClientGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
+	sendRespLog respLogger,
 ) {
 	if err := requestGenerator(req); err != nil {
-		sendMessage(runtimeMessageLevelError, err.Error())
+		sendLog(runtimeLogLevelError, err.Error())
 
 		// Static request generation failed - just count the jobs without sending
 		for range jobs {
@@ -188,80 +202,84 @@ func (q sarin) workerNoStatsWithStatic(
 
 	for range jobs {
 		resp.Reset()
-		_ = hostClientGenerator().DoTimeout(req, resp, q.timeout)
+		startTime := time.Now()
+		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
+		if err == nil {
+			sendRespLog(time.Since(startTime), resp)
+		}
 		counter.Add(1)
 	}
 }
 
-func (q sarin) workerDryRunStatsWithDynamic(
+func (s sarin) workerDryRunStatsWithDynamic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	requestGenerator RequestGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
 ) {
 	for range jobs {
 		req.Reset()
 		startTime := time.Now()
 		if err := requestGenerator(req); err != nil {
-			q.responses.Add(err.Error(), time.Since(startTime))
-			sendMessage(runtimeMessageLevelError, err.Error())
+			s.responses.Add(err.Error(), time.Since(startTime))
+			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 			continue
 		}
-		q.responses.Add(dryRunResponseKey, time.Since(startTime))
+		s.responses.Add(dryRunResponseKey, time.Since(startTime))
 		counter.Add(1)
 	}
 }
 
-func (q sarin) workerDryRunStatsWithStatic(
+func (s sarin) workerDryRunStatsWithStatic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	requestGenerator RequestGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
 ) {
 	if err := requestGenerator(req); err != nil {
 		// Static request generation failed - record all jobs as errors
 		for range jobs {
-			q.responses.Add(err.Error(), 0)
-			sendMessage(runtimeMessageLevelError, err.Error())
+			s.responses.Add(err.Error(), 0)
+			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 		}
 		return
 	}
 
 	for range jobs {
-		q.responses.Add(dryRunResponseKey, 0)
+		s.responses.Add(dryRunResponseKey, 0)
 		counter.Add(1)
 	}
 }
 
-func (q sarin) workerDryRunNoStatsWithDynamic(
+func (s sarin) workerDryRunNoStatsWithDynamic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	requestGenerator RequestGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
 ) {
 	for range jobs {
 		req.Reset()
 		if err := requestGenerator(req); err != nil {
-			sendMessage(runtimeMessageLevelError, err.Error())
+			sendLog(runtimeLogLevelError, err.Error())
 		}
 		counter.Add(1)
 	}
 }
 
-func (q sarin) workerDryRunNoStatsWithStatic(
+func (s sarin) workerDryRunNoStatsWithStatic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	requestGenerator RequestGenerator,
 	counter *atomic.Uint64,
-	sendMessage messageSender,
+	sendLog runtimeLogger,
 ) {
 	if err := requestGenerator(req); err != nil {
-		sendMessage(runtimeMessageLevelError, err.Error())
+		sendLog(runtimeLogLevelError, err.Error())
 	}
 
 	for range jobs {
