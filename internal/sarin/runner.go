@@ -34,13 +34,14 @@ type runtimeLog struct {
 
 type runtimeLogger func(level runtimeLogLevel, text string)
 
-// SplitLogLevels parses a comma-separated log-level string into a normalized,
-// deduplicated slice of level tokens (lowercased and trimmed, empties dropped).
+// SplitLogLevels parses a comma-separated log-level string into a deduplicated
+// slice of level tokens (surrounding whitespace trimmed, empties dropped). Level
+// names are matched case-sensitively, like the other enum options.
 func SplitLogLevels(levels string) []string {
 	var out []string
 	seen := make(map[string]bool)
 	for part := range strings.SplitSeq(levels, ",") {
-		token := strings.ToLower(strings.TrimSpace(part))
+		token := strings.TrimSpace(part)
 		if token == "" || seen[token] {
 			continue
 		}
