@@ -50,10 +50,10 @@ func main() {
 		ctx,
 		combinedConfig.Methods, combinedConfig.URL, *combinedConfig.Timeout,
 		*combinedConfig.Concurrency, combinedConfig.Requests, combinedConfig.Duration,
-		*combinedConfig.Quiet, *combinedConfig.Insecure, combinedConfig.Params, combinedConfig.Headers,
+		*combinedConfig.Progress == config.ConfigProgressTypeBar, *combinedConfig.Insecure, combinedConfig.Params, combinedConfig.Headers,
 		combinedConfig.Cookies, combinedConfig.Bodies, combinedConfig.Proxies, combinedConfig.Values,
 		*combinedConfig.Output != config.ConfigOutputTypeNone,
-		*combinedConfig.DryRun,
+		*combinedConfig.DryRun, *combinedConfig.LogLevel, *combinedConfig.LogFile,
 		combinedConfig.Lua, combinedConfig.Js,
 	)
 	_ = utilsErr.MustHandle(err,

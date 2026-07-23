@@ -192,24 +192,26 @@ func (kv *keyValuesField) unmarshalMapping(node *yaml.Node) error {
 }
 
 type configYAML struct {
+	ShowConfig   *bool              `yaml:"showConfig"`
 	ConfigFiles  stringOrSliceField `yaml:"configFile"`
-	Method       stringOrSliceField `yaml:"method"`
-	URL          *string            `yaml:"url"`
-	Timeout      *time.Duration     `yaml:"timeout"`
 	Concurrency  *uint              `yaml:"concurrency"`
 	RequestCount *uint64            `yaml:"requests"`
 	Duration     *time.Duration     `yaml:"duration"`
-	Quiet        *bool              `yaml:"quiet"`
+	LogLevel     *string            `yaml:"logLevel"`
+	LogFile      *string            `yaml:"logFile"`
+	Progress     *string            `yaml:"progress"`
 	Output       *string            `yaml:"output"`
-	Insecure     *bool              `yaml:"insecure"`
-	ShowConfig   *bool              `yaml:"showConfig"`
 	DryRun       *bool              `yaml:"dryRun"`
+	URL          *string            `yaml:"url"`
+	Method       stringOrSliceField `yaml:"method"`
+	Bodies       stringOrSliceField `yaml:"body"`
 	Params       keyValuesField     `yaml:"params"`
 	Headers      keyValuesField     `yaml:"headers"`
 	Cookies      keyValuesField     `yaml:"cookies"`
-	Bodies       stringOrSliceField `yaml:"body"`
 	Proxies      stringOrSliceField `yaml:"proxy"`
 	Values       stringOrSliceField `yaml:"values"`
+	Timeout      *time.Duration     `yaml:"timeout"`
+	Insecure     *bool              `yaml:"insecure"`
 	Lua          stringOrSliceField `yaml:"lua"`
 	Js           stringOrSliceField `yaml:"js"`
 }
@@ -231,39 +233,29 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 
 	var fieldParseErrors []types.FieldParseError
 
-	config.Methods = append(config.Methods, parsedData.Method...)
-	config.Timeout = parsedData.Timeout
-	config.Concurrency = parsedData.Concurrency
-	config.Requests = parsedData.RequestCount
-	config.Duration = parsedData.Duration
 	config.ShowConfig = parsedData.ShowConfig
-	config.Quiet = parsedData.Quiet
-
-	if parsedData.Output != nil {
-		config.Output = new(ConfigOutputType(*parsedData.Output))
-	}
-
-	config.Insecure = parsedData.Insecure
-	config.DryRun = parsedData.DryRun
-	for _, kv := range parsedData.Params {
-		config.Params = append(config.Params, types.Param(kv))
-	}
-	for _, kv := range parsedData.Headers {
-		config.Headers = append(config.Headers, types.Header(kv))
-	}
-	for _, kv := range parsedData.Cookies {
-		config.Cookies = append(config.Cookies, types.Cookie(kv))
-	}
-	config.Bodies = append(config.Bodies, parsedData.Bodies...)
-	config.Values = append(config.Values, parsedData.Values...)
-	config.Lua = append(config.Lua, parsedData.Lua...)
-	config.Js = append(config.Js, parsedData.Js...)
 
 	if len(parsedData.ConfigFiles) > 0 {
 		for _, configFile := range parsedData.ConfigFiles {
 			config.Files = append(config.Files, *types.ParseConfigFile(configFile))
 		}
 	}
+
+	config.Concurrency = parsedData.Concurrency
+	config.Requests = parsedData.RequestCount
+	config.Duration = parsedData.Duration
+	config.LogLevel = parsedData.LogLevel
+	config.LogFile = parsedData.LogFile
+
+	if parsedData.Progress != nil {
+		config.Progress = new(ConfigProgressType(*parsedData.Progress))
+	}
+
+	if parsedData.Output != nil {
+		config.Output = new(ConfigOutputType(*parsedData.Output))
+	}
+
+	config.DryRun = parsedData.DryRun
 
 	if parsedData.URL != nil {
 		urlParsed, err := url.Parse(*parsedData.URL)
@@ -272,6 +264,18 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 		} else {
 			config.URL = urlParsed
 		}
+	}
+
+	config.Methods = append(config.Methods, parsedData.Method...)
+	config.Bodies = append(config.Bodies, parsedData.Bodies...)
+	for _, kv := range parsedData.Params {
+		config.Params = append(config.Params, types.Param(kv))
+	}
+	for _, kv := range parsedData.Headers {
+		config.Headers = append(config.Headers, types.Header(kv))
+	}
+	for _, kv := range parsedData.Cookies {
+		config.Cookies = append(config.Cookies, types.Cookie(kv))
 	}
 
 	for i, proxy := range parsedData.Proxies {
@@ -283,6 +287,12 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 			)
 		}
 	}
+
+	config.Values = append(config.Values, parsedData.Values...)
+	config.Timeout = parsedData.Timeout
+	config.Insecure = parsedData.Insecure
+	config.Lua = append(config.Lua, parsedData.Lua...)
+	config.Js = append(config.Js, parsedData.Js...)
 
 	if len(fieldParseErrors) > 0 {
 		return nil, types.NewFieldParseErrors(fieldParseErrors)

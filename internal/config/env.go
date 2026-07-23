@@ -49,74 +49,6 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 		config.Files = append(config.Files, *types.ParseConfigFile(configFile))
 	}
 
-	if quiet := parser.getEnv("QUIET"); quiet != "" {
-		quietParsed, err := utilsParse.ParseString[bool](quiet)
-		if err != nil {
-			fieldParseErrors = append(
-				fieldParseErrors,
-				types.NewFieldParseError(
-					parser.getFullEnvName("QUIET"),
-					quiet,
-					errors.New("invalid value for boolean, expected 'true' or 'false'"),
-				),
-			)
-		} else {
-			config.Quiet = &quietParsed
-		}
-	}
-
-	if output := parser.getEnv("OUTPUT"); output != "" {
-		config.Output = new(ConfigOutputType(output))
-	}
-
-	if insecure := parser.getEnv("INSECURE"); insecure != "" {
-		insecureParsed, err := utilsParse.ParseString[bool](insecure)
-		if err != nil {
-			fieldParseErrors = append(
-				fieldParseErrors,
-				types.NewFieldParseError(
-					parser.getFullEnvName("INSECURE"),
-					insecure,
-					errors.New("invalid value for boolean, expected 'true' or 'false'"),
-				),
-			)
-		} else {
-			config.Insecure = &insecureParsed
-		}
-	}
-
-	if dryRun := parser.getEnv("DRY_RUN"); dryRun != "" {
-		dryRunParsed, err := utilsParse.ParseString[bool](dryRun)
-		if err != nil {
-			fieldParseErrors = append(
-				fieldParseErrors,
-				types.NewFieldParseError(
-					parser.getFullEnvName("DRY_RUN"),
-					dryRun,
-					errors.New("invalid value for boolean, expected 'true' or 'false'"),
-				),
-			)
-		} else {
-			config.DryRun = &dryRunParsed
-		}
-	}
-
-	if method := parser.getEnv("METHOD"); method != "" {
-		config.Methods = []string{method}
-	}
-
-	if urlEnv := parser.getEnv("URL"); urlEnv != "" {
-		urlEnvParsed, err := url.Parse(urlEnv)
-		if err != nil {
-			fieldParseErrors = append(
-				fieldParseErrors,
-				types.NewFieldParseError(parser.getFullEnvName("URL"), urlEnv, err),
-			)
-		} else {
-			config.URL = urlEnvParsed
-		}
-	}
-
 	if concurrency := parser.getEnv("CONCURRENCY"); concurrency != "" {
 		concurrencyParsed, err := utilsParse.ParseString[uint](concurrency)
 		if err != nil {
@@ -165,20 +97,56 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 		}
 	}
 
-	if timeout := parser.getEnv("TIMEOUT"); timeout != "" {
-		timeoutParsed, err := utilsParse.ParseString[time.Duration](timeout)
+	if logLevel := parser.getEnv("LOG_LEVEL"); logLevel != "" {
+		config.LogLevel = new(logLevel)
+	}
+
+	if logFile := parser.getEnv("LOG_FILE"); logFile != "" {
+		config.LogFile = new(logFile)
+	}
+
+	if progress := parser.getEnv("PROGRESS"); progress != "" {
+		config.Progress = new(ConfigProgressType(progress))
+	}
+
+	if output := parser.getEnv("OUTPUT"); output != "" {
+		config.Output = new(ConfigOutputType(output))
+	}
+
+	if dryRun := parser.getEnv("DRY_RUN"); dryRun != "" {
+		dryRunParsed, err := utilsParse.ParseString[bool](dryRun)
 		if err != nil {
 			fieldParseErrors = append(
 				fieldParseErrors,
 				types.NewFieldParseError(
-					parser.getFullEnvName("TIMEOUT"),
-					timeout,
-					errors.New("invalid value for duration, expected a duration string (e.g., '10s', '1h30m')"),
+					parser.getFullEnvName("DRY_RUN"),
+					dryRun,
+					errors.New("invalid value for boolean, expected 'true' or 'false'"),
 				),
 			)
 		} else {
-			config.Timeout = &timeoutParsed
+			config.DryRun = &dryRunParsed
 		}
+	}
+
+	if urlEnv := parser.getEnv("URL"); urlEnv != "" {
+		urlEnvParsed, err := url.Parse(urlEnv)
+		if err != nil {
+			fieldParseErrors = append(
+				fieldParseErrors,
+				types.NewFieldParseError(parser.getFullEnvName("URL"), urlEnv, err),
+			)
+		} else {
+			config.URL = urlEnvParsed
+		}
+	}
+
+	if method := parser.getEnv("METHOD"); method != "" {
+		config.Methods = []string{method}
+	}
+
+	if body := parser.getEnv("BODY"); body != "" {
+		config.Bodies = []string{body}
 	}
 
 	if param := parser.getEnv("PARAM"); param != "" {
@@ -191,10 +159,6 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 
 	if cookie := parser.getEnv("COOKIE"); cookie != "" {
 		config.Cookies.Parse(cookie)
-	}
-
-	if body := parser.getEnv("BODY"); body != "" {
-		config.Bodies = []string{body}
 	}
 
 	if proxy := parser.getEnv("PROXY"); proxy != "" {
@@ -213,6 +177,38 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 
 	if values := parser.getEnv("VALUES"); values != "" {
 		config.Values = []string{values}
+	}
+
+	if timeout := parser.getEnv("TIMEOUT"); timeout != "" {
+		timeoutParsed, err := utilsParse.ParseString[time.Duration](timeout)
+		if err != nil {
+			fieldParseErrors = append(
+				fieldParseErrors,
+				types.NewFieldParseError(
+					parser.getFullEnvName("TIMEOUT"),
+					timeout,
+					errors.New("invalid value for duration, expected a duration string (e.g., '10s', '1h30m')"),
+				),
+			)
+		} else {
+			config.Timeout = &timeoutParsed
+		}
+	}
+
+	if insecure := parser.getEnv("INSECURE"); insecure != "" {
+		insecureParsed, err := utilsParse.ParseString[bool](insecure)
+		if err != nil {
+			fieldParseErrors = append(
+				fieldParseErrors,
+				types.NewFieldParseError(
+					parser.getFullEnvName("INSECURE"),
+					insecure,
+					errors.New("invalid value for boolean, expected 'true' or 'false'"),
+				),
+			)
+		} else {
+			config.Insecure = &insecureParsed
+		}
 	}
 
 	if lua := parser.getEnv("LUA"); lua != "" {
