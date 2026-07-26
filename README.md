@@ -63,20 +63,20 @@ docker run --rm -it aykhans/sarin -f https://example.com/config.yaml
 Run directly without installing (requires flakes enabled):
 
 ```sh
-nix run github:aykhans/sarin/v1.3.2 -- -U http://example.com -r 100 -c 10
+nix run github:aykhans/sarin/v1.4.0 -- -U http://example.com -r 100 -c 10
 ```
 
 Install into your profile:
 
 ```sh
-nix profile install github:aykhans/sarin/v1.3.2
+nix profile install github:aykhans/sarin/v1.4.0
 ```
 
 Or add it to your own flake via the overlay:
 
 ```nix
 {
-  inputs.sarin.url = "github:aykhans/sarin/v1.3.2";
+  inputs.sarin.url = "github:aykhans/sarin/v1.4.0";
 
   # In your outputs, apply the overlay to nixpkgs:
   # nixpkgs.overlays = [ inputs.sarin.overlays.default ];
