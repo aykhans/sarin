@@ -36,10 +36,11 @@ Sarin is designed for efficient HTTP load testing with minimal resource consumpt
 
 ## Installation
 
-### Docker (Recommended)
+<details open>
+<summary><b>Docker</b></summary>
 
 ```sh
-docker pull aykhans/sarin:latest
+docker run -it aykhans/sarin:latest --version
 ```
 
 With a local config file:
@@ -54,11 +55,46 @@ With a remote config file:
 docker run --rm -it aykhans/sarin -f https://example.com/config.yaml
 ```
 
-### Pre-built Binaries
+</details>
+
+<details>
+<summary><b>Nix</b></summary>
+
+Run directly without installing (requires flakes enabled):
+
+```sh
+nix run github:aykhans/sarin -- -U http://example.com -r 100 -c 10
+```
+
+Install into your profile:
+
+```sh
+nix profile install github:aykhans/sarin
+```
+
+Or add it to your own flake via the overlay:
+
+```nix
+{
+  inputs.sarin.url = "github:aykhans/sarin";
+
+  # In your outputs, apply the overlay to nixpkgs:
+  # nixpkgs.overlays = [ inputs.sarin.overlays.default ];
+  # then reference pkgs.sarin
+}
+```
+
+</details>
+
+<details>
+<summary><b>Pre-built Binaries</b></summary>
 
 Download the latest binaries from the [releases](https://github.com/aykhans/sarin/releases) page.
 
-### Building from Source
+</details>
+
+<details>
+<summary><b>Building from Source</b></summary>
 
 Requires [Go 1.26+](https://golang.org/dl/).
 
@@ -73,6 +109,8 @@ CGO_ENABLED=0 go build \
     -s -w" \
     -o sarin ./cmd/cli/main.go
 ```
+
+</details>
 
 ## Quick Start
 
