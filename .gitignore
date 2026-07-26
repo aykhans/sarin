@@ -1,1 +1,5 @@
 bin/*
+
+# Nix build artifacts
+result
+result-*
