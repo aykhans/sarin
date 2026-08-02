@@ -32,7 +32,6 @@ Sarin is designed for efficient HTTP load testing with minimal resource consumpt
 | Request scripting with Lua and JavaScript                  | Distributed load testing        |
 | Multiple proxy protocols<br>(HTTP, HTTPS, SOCKS5, SOCKS5H) | HTTP/2, HTTP/3, WebSocket, gRPC |
 | Captcha solving<br>(2Captcha, Anti-Captcha, CapSolver)     | Plugins / extensions ecosystem  |
-| Flexible config (CLI, ENV, YAML)                           |                                 |
 
 ## Installation
 
@@ -40,7 +39,7 @@ Sarin is designed for efficient HTTP load testing with minimal resource consumpt
 <summary><b>Docker</b></summary>
 
 ```sh
-docker run -it aykhans/sarin:latest --version
+docker run --rm -it aykhans/sarin:latest --version
 ```
 
 With a local config file:
