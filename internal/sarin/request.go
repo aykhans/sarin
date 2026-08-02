@@ -56,9 +56,9 @@ func NewRequestGenerator(
 
 	pathGenerator, isPathGeneratorDynamic := createTemplateFunc(requestURL.Path, lazyTemplateRoot)
 	methodGenerator, isMethodGeneratorDynamic := NewMethodGeneratorFunc(localRand, methods, lazyTemplateRoot)
-	paramsGenerator, isParamsGeneratorDynamic := NewParamsGeneratorFunc(localRand, params, lazyTemplateRoot)
-	headersGenerator, isHeadersGeneratorDynamic := NewHeadersGeneratorFunc(localRand, headers, lazyTemplateRoot)
-	cookiesGenerator, isCookiesGeneratorDynamic := NewCookiesGeneratorFunc(localRand, cookies, lazyTemplateRoot)
+	paramsGenerator, isParamsGeneratorDynamic, paramKeysAreStatic := NewParamsGeneratorFunc(localRand, params, lazyTemplateRoot)
+	headersGenerator, isHeadersGeneratorDynamic, headerKeysAreStatic := NewHeadersGeneratorFunc(localRand, headers, lazyTemplateRoot)
+	cookiesGenerator, isCookiesGeneratorDynamic, cookieKeysAreStatic := NewCookiesGeneratorFunc(localRand, cookies, lazyTemplateRoot)
 
 	bodyTemplateFuncMapData := &BodyTemplateFuncMapData{}
 	var bodyTemplateRoot *template.Template
@@ -83,13 +83,26 @@ func NewRequestGenerator(
 		Cookies: make(map[string][]string),
 	}
 
+	// When a map's key set is fixed, every request refills exactly the same keys, so
+	// the value slices can be truncated and reused instead of being reallocated after
+	// a clear(). Scripts are excluded: they may swap the maps out or add keys of their
+	// own, and they would observe a leftover empty slice where a key used to be absent.
+	reuseParamSlices := paramKeysAreStatic && !hasScripts
+	reuseHeaderSlices := headerKeysAreStatic && !hasScripts
+	reuseCookieSlices := cookieKeysAreStatic && !hasScripts
+
 	var (
 		data valuesData
 		path string
 		err  error
 	)
 	return func(req *fasthttp.Request) error {
-			resetRequestData(reqData)
+			resetStringSliceMap(reqData.Headers, reuseHeaderSlices)
+			resetStringSliceMap(reqData.Params, reuseParamSlices)
+			resetStringSliceMap(reqData.Cookies, reuseCookieSlices)
+			reqData.Method = ""
+			reqData.Path = ""
+			reqData.Body = ""
 
 			data, err = valuesGenerator()
 			if err != nil {
@@ -143,20 +156,24 @@ func NewRequestGenerator(
 			hasScripts
 }
 
-func resetRequestData(reqData *script.RequestData) {
-	reqData.Method = ""
-	reqData.Path = ""
-	reqData.Body = ""
-	clear(reqData.Headers)
-	clear(reqData.Params)
-	clear(reqData.Cookies)
+// resetStringSliceMap empties m for the next render. With reuse it truncates the
+// value slices in place so the following appends land in the existing backing
+// arrays, without it the map is cleared so no stale key can survive.
+func resetStringSliceMap(m map[string][]string, reuse bool) {
+	if !reuse {
+		clear(m)
+		return
+	}
+	for k, v := range m {
+		m[k] = v[:0]
+	}
 }
 
 func applyRequestDataToFastHTTP(reqData *script.RequestData, req *fasthttp.Request, host, scheme string) {
 	req.Header.SetHost(host)
 	req.SetRequestURI(reqData.Path)
 	req.Header.SetMethod(reqData.Method)
-	req.SetBody([]byte(reqData.Body))
+	req.SetBodyString(reqData.Body)
 
 	for k, values := range reqData.Headers {
 		for _, v := range values {
@@ -164,20 +181,28 @@ func applyRequestDataToFastHTTP(reqData *script.RequestData, req *fasthttp.Reque
 		}
 	}
 
-	for k, values := range reqData.Params {
-		for _, v := range values {
-			req.URI().QueryArgs().Add(k, v)
+	if len(reqData.Params) > 0 {
+		args := req.URI().QueryArgs()
+		for k, values := range reqData.Params {
+			for _, v := range values {
+				args.Add(k, v)
+			}
 		}
 	}
 
 	if len(reqData.Cookies) > 0 {
-		cookieStrings := make([]string, 0, len(reqData.Cookies))
+		var sb strings.Builder
 		for k, values := range reqData.Cookies {
 			for _, v := range values {
-				cookieStrings = append(cookieStrings, k+"="+v)
+				if sb.Len() > 0 {
+					sb.WriteString("; ")
+				}
+				sb.WriteString(k)
+				sb.WriteByte('=')
+				sb.WriteString(v)
 			}
 		}
-		req.Header.Add("Cookie", strings.Join(cookieStrings, "; "))
+		req.Header.Add("Cookie", sb.String())
 	}
 
 	if scheme == "https" {
@@ -221,8 +246,8 @@ func NewBodyGeneratorFunc(localRand *rand.Rand, bodies []string, lazyRoot func()
 	}, isDynamic
 }
 
-func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
-	generators, isDynamic := buildKeyValueGenerators(localRand, params, lazyRoot)
+func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, lazyRoot func() *template.Template) (requestDataGenerator, bool, bool) {
+	generators, isDynamic, keysAreStatic := buildKeyValueGenerators(localRand, params, lazyRoot)
 
 	var (
 		key, value string
@@ -243,11 +268,11 @@ func NewParamsGeneratorFunc(localRand *rand.Rand, params types.Params, lazyRoot 
 			reqData.Params[key] = append(reqData.Params[key], value)
 		}
 		return nil
-	}, isDynamic
+	}, isDynamic, keysAreStatic
 }
 
-func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
-	generators, isDynamic := buildKeyValueGenerators(localRand, headers, lazyRoot)
+func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, lazyRoot func() *template.Template) (requestDataGenerator, bool, bool) {
+	generators, isDynamic, keysAreStatic := buildKeyValueGenerators(localRand, headers, lazyRoot)
 
 	var (
 		key, value string
@@ -268,11 +293,11 @@ func NewHeadersGeneratorFunc(localRand *rand.Rand, headers types.Headers, lazyRo
 			reqData.Headers[key] = append(reqData.Headers[key], value)
 		}
 		return nil
-	}, isDynamic
+	}, isDynamic, keysAreStatic
 }
 
-func NewCookiesGeneratorFunc(localRand *rand.Rand, cookies types.Cookies, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
-	generators, isDynamic := buildKeyValueGenerators(localRand, cookies, lazyRoot)
+func NewCookiesGeneratorFunc(localRand *rand.Rand, cookies types.Cookies, lazyRoot func() *template.Template) (requestDataGenerator, bool, bool) {
+	generators, isDynamic, keysAreStatic := buildKeyValueGenerators(localRand, cookies, lazyRoot)
 
 	var (
 		key, value string
@@ -293,14 +318,26 @@ func NewCookiesGeneratorFunc(localRand *rand.Rand, cookies types.Cookies, lazyRo
 			reqData.Cookies[key] = append(reqData.Cookies[key], value)
 		}
 		return nil
-	}, isDynamic
+	}, isDynamic, keysAreStatic
 }
 
 func NewValuesGeneratorFunc(values []string, lazyRoot func() *template.Template) func() (valuesData, error) {
+	// No values configured: hand back one shared empty map instead of allocating a
+	// fresh one for every request. Nothing ever writes to it.
+	if len(values) == 0 {
+		empty := valuesData{Values: map[string]string{}}
+		return func() (valuesData, error) { return empty, nil }
+	}
+
 	generators := make([]func(_ any) (string, error), len(values))
 
+	isDynamic := false
 	for i, v := range values {
-		generators[i], _ = createTemplateFunc(v, lazyRoot)
+		var valueIsDynamic bool
+		generators[i], valueIsDynamic = createTemplateFunc(v, lazyRoot)
+		if valueIsDynamic {
+			isDynamic = true
+		}
 	}
 
 	var (
@@ -308,7 +345,7 @@ func NewValuesGeneratorFunc(values []string, lazyRoot func() *template.Template)
 		data     map[string]string
 		err      error
 	)
-	return func() (valuesData, error) {
+	generate := func() (valuesData, error) {
 		result := make(map[string]string)
 		for _, generator := range generators {
 			rendered, err = generator(nil)
@@ -326,6 +363,15 @@ func NewValuesGeneratorFunc(values []string, lazyRoot func() *template.Template)
 
 		return valuesData{Values: result}, nil
 	}
+
+	// Every value is a literal, so the parsed result is identical on every request:
+	// render and parse once instead of re-running godotenv per request.
+	if !isDynamic {
+		staticResult, staticErr := generate()
+		return func() (valuesData, error) { return staticResult, staticErr }
+	}
+
+	return generate
 }
 
 func createTemplateFunc(value string, lazyRoot func() *template.Template) (func(data any) (string, error), bool) {
@@ -335,15 +381,19 @@ func createTemplateFunc(value string, lazyRoot func() *template.Template) (func(
 
 	tmpl, err := lazyRoot().New("").Parse(value)
 	if err == nil && hasTemplateActions(tmpl) {
-		var err error
+		var (
+			buf bytes.Buffer
+			err error
+		)
 		return func(data any) (string, error) {
-			var buf bytes.Buffer
+			buf.Reset()
 			if err = tmpl.Execute(&buf, data); err != nil {
 				return "", types.NewTemplateRenderError(err)
 			}
 			return buf.String(), nil
 		}, true
 	}
+
 	return func(_ any) (string, error) { return value, nil }, false
 }
 
@@ -360,8 +410,9 @@ func buildKeyValueGenerators[T keyValueItem](
 	localRand *rand.Rand,
 	items []T,
 	lazyRoot func() *template.Template,
-) ([]keyValueGenerator, bool) {
+) ([]keyValueGenerator, bool, bool) {
 	isDynamic := false
+	keysAreStatic := true
 	generators := make([]keyValueGenerator, len(items))
 
 	for generatorIndex, item := range items {
@@ -372,6 +423,7 @@ func buildKeyValueGenerators[T keyValueItem](
 		keyFunc, keyIsDynamic := createTemplateFunc(keyValue.Key, lazyRoot)
 		if keyIsDynamic {
 			isDynamic = true
+			keysAreStatic = false
 		}
 
 		// Generate value functions
@@ -394,7 +446,7 @@ func buildKeyValueGenerators[T keyValueItem](
 		}
 	}
 
-	return generators, isDynamic
+	return generators, isDynamic, keysAreStatic
 }
 
 func buildStringSliceGenerator(
