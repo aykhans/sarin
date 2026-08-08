@@ -187,10 +187,32 @@ type sarin struct {
 	logError       bool
 	logFile        string
 
-	hostClients []*fasthttp.HostClient
-	responses   *SarinResponseData
-	fileCache   *FileCache
-	scriptChain *script.Chain
+	newHostClients HostClientsFactory
+	responses      *SarinResponseData
+	fileCache      *FileCache
+	scriptChain    *script.Chain
+}
+
+// jobSource hands a worker its next unit of work. It reports false once the run
+// is over, either because every request has been claimed or because the run was
+// stopped.
+//
+// Work is claimed straight from the worker with an atomic counter rather than
+// pushed over a channel: a channel costs a send and a receive per request and
+// funnels every worker through one producer goroutine, which is the single
+// hottest lock in the loop once the worker count grows.
+type jobSource func() bool
+
+func newJobSource(totalRequests *uint64, stopped *atomic.Bool) jobSource {
+	if totalRequests == nil || *totalRequests == 0 {
+		return func() bool { return !stopped.Load() }
+	}
+
+	total := *totalRequests
+	var issued atomic.Uint64
+	return func() bool {
+		return !stopped.Load() && issued.Add(1) <= total
+	}
 }
 
 // NewSarin creates a new sarin instance for load testing.
@@ -236,7 +258,7 @@ func NewSarin(
 		}
 	}
 
-	hostClients, err := newHostClients(ctx, timeout, proxies, workers, requestURL, skipCertVerify)
+	hostClientsFactory, err := newHostClients(ctx, timeout, proxies, workers, requestURL, skipCertVerify)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +295,7 @@ func NewSarin(
 		logInfo:        logInfo,
 		logError:       logError,
 		logFile:        logFile,
-		hostClients:    hostClients,
+		newHostClients: hostClientsFactory,
 		fileCache:      NewFileCache(time.Second * 10),
 		scriptChain:    scriptChain,
 	}
@@ -290,10 +312,7 @@ func (s sarin) GetResponses() *SarinResponseData {
 }
 
 func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
-	jobsCtx, jobsCancel := context.WithCancel(ctx)
-
 	var workersWG sync.WaitGroup
-	jobsCh := make(chan struct{}, max(s.workers, 1))
 
 	var counter atomic.Uint64
 
@@ -322,6 +341,18 @@ func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
 		defer f.Close() //nolint:errcheck
 		logFile = f
 	}
+
+	jobsCtx, jobsCancel := context.WithCancel(ctx)
+	defer jobsCancel()
+
+	// Workers poll this flag instead of the context: context.Err takes a mutex,
+	// and it would be read once per request by every worker.
+	var stopped atomic.Bool
+	go func() {
+		<-jobsCtx.Done()
+		stopped.Store(true)
+	}()
+	jobs := newJobSource(s.totalRequests, &stopped)
 
 	var (
 		streamCtx     context.Context
@@ -352,7 +383,7 @@ func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
 	}
 
 	// Start workers
-	s.startWorkers(&workersWG, jobsCh, s.hostClients, &counter, sendLog, sendRespLog)
+	s.startWorkers(&workersWG, jobs, &counter, sendLog, sendRespLog)
 
 	if runTUI {
 		//nolint:contextcheck // streamCtx must remain active until all workers complete to ensure all collected data is streamed
@@ -361,13 +392,9 @@ func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
 
 	// Setup duration-based cancellation
 	s.setupDurationTimeout(ctx, jobsCancel)
-	// Distribute jobs to workers.
-	// This blocks until all jobs are sent or the context is canceled.
-	s.sendJobs(jobsCtx, jobsCh)
 
-	// Close the jobs channel so workers stop after completing their current job
-	close(jobsCh)
-	// Wait until all workers stopped
+	// Workers claim their own jobs, so there is nothing to distribute here:
+	// wait until every worker has run out of work or been stopped.
 	workersWG.Wait()
 	if tuiLogChannel != nil {
 		close(tuiLogChannel)
@@ -420,7 +447,8 @@ func (s sarin) newChannelLog(ch chan<- runtimeLog) (runtimeLogger, respLogger) {
 	return sendLog, sendRespLog
 }
 
-// newHostClients initializes HTTP clients for the given configuration.
+// newHostClients initializes the per-worker HTTP client factory for the given
+// configuration.
 // It can return the following errors:
 // - types.ProxyDialError
 func newHostClients(
@@ -430,7 +458,7 @@ func newHostClients(
 	workers uint,
 	requestURL *url.URL,
 	skipCertVerify bool,
-) ([]*fasthttp.HostClient, error) {
+) (HostClientsFactory, error) {
 	proxiesRaw := make([]url.URL, len(proxies))
 	for i, proxy := range proxies {
 		proxiesRaw[i] = url.URL(proxy)
@@ -446,10 +474,10 @@ func newHostClients(
 	)
 }
 
-func (s sarin) startWorkers(wg *sync.WaitGroup, jobs <-chan struct{}, hostClients []*fasthttp.HostClient, counter *atomic.Uint64, sendLog runtimeLogger, sendRespLog respLogger) {
+func (s sarin) startWorkers(wg *sync.WaitGroup, jobs jobSource, counter *atomic.Uint64, sendLog runtimeLogger, sendRespLog respLogger) {
 	for range max(s.workers, 1) {
 		wg.Go(func() {
-			s.Worker(jobs, NewHostClientGenerator(hostClients...), counter, sendLog, sendRespLog)
+			s.Worker(jobs, NewHostClientGenerator(s.newHostClients()...), counter, sendLog, sendRespLog)
 		})
 	}
 }
@@ -466,20 +494,5 @@ func (s sarin) setupDurationTimeout(ctx context.Context, cancel context.CancelFu
 				// Context cancelled, cleanup
 			}
 		}()
-	}
-}
-
-func (s sarin) sendJobs(ctx context.Context, jobs chan<- struct{}) {
-	if s.totalRequests != nil && *s.totalRequests > 0 {
-		for range *s.totalRequests {
-			if ctx.Err() != nil {
-				break
-			}
-			jobs <- struct{}{}
-		}
-	} else {
-		for ctx.Err() == nil {
-			jobs <- struct{}{}
-		}
 	}
 }

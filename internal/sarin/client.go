@@ -20,6 +20,13 @@ import (
 
 type HostClientGenerator func() *fasthttp.HostClient
 
+// HostClientsFactory builds the host clients a single worker will use. Each
+// worker gets its own set so the per-client connection pool is never shared:
+// fasthttp guards that pool with a mutex and, with the default FIFO strategy,
+// shifts the whole pool on every acquire, which turns into per-request
+// contention proportional to the worker count once the clients are shared.
+type HostClientsFactory func() []*fasthttp.HostClient
+
 func safeUintToInt(u uint) int {
 	if u > math.MaxInt {
 		return math.MaxInt
@@ -27,8 +34,41 @@ func safeUintToInt(u uint) int {
 	return int(u)
 }
 
-// NewHostClients creates a list of fasthttp.HostClient instances for the given proxies.
-// If no proxies are provided, a single client without a proxy is returned.
+// newHostClient builds a single client. maxConns bounds the client's own pool;
+// MaxConnDuration is deliberately left at zero so keep-alive connections live
+// for the whole run. Bounding it makes fasthttp force a `Connection: close` and
+// redial once the bound is passed, which costs a TCP (and, over HTTPS, a TLS)
+// handshake on that request and shows up as a latency spike in the stats.
+func newHostClient(
+	addr string,
+	isTLS bool,
+	tlsConfig *tls.Config,
+	dialFunc fasthttp.DialFunc,
+	maxConns int,
+	timeout time.Duration,
+) *fasthttp.HostClient {
+	return &fasthttp.HostClient{
+		MaxConns:                      maxConns,
+		IsTLS:                         isTLS,
+		TLSConfig:                     tlsConfig,
+		Addr:                          addr,
+		Dial:                          dialFunc,
+		ConnPoolStrategy:              fasthttp.LIFO,
+		MaxIdleConnDuration:           timeout,
+		WriteTimeout:                  timeout,
+		ReadTimeout:                   timeout,
+		DisableHeaderNamesNormalizing: true,
+		DisablePathNormalizing:        true,
+		NoDefaultUserAgentHeader:      true,
+	}
+}
+
+// NewHostClients returns a factory that creates the fasthttp.HostClient set for
+// one worker. If no proxies are provided the worker gets a single client.
+//
+// Proxy dial functions are built (and validated) once here and shared by every
+// worker; they are stateless and safe for concurrent use.
+//
 // It can return the following errors:
 // - types.ProxyDialError
 func NewHostClients(
@@ -38,60 +78,47 @@ func NewHostClients(
 	maxConns uint,
 	requestURL *url.URL,
 	skipVerify bool,
-) ([]*fasthttp.HostClient, error) {
+) (HostClientsFactory, error) {
 	isTLS := requestURL.Scheme == "https"
+	// Shared across clients: fasthttp clones it per address before use, so it is
+	// only ever read.
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: skipVerify, //nolint:gosec
+	}
 
 	if proxiesLen := len(proxies); proxiesLen > 0 {
-		clients := make([]*fasthttp.HostClient, 0, proxiesLen)
 		addr := requestURL.Host
 		if isTLS && requestURL.Port() == "" {
 			addr += ":443"
 		}
 
+		dialFuncs := make([]fasthttp.DialFunc, 0, proxiesLen)
 		for _, proxy := range proxies {
 			dialFunc, err := NewProxyDialFunc(ctx, &proxy, timeout)
 			if err != nil {
 				return nil, types.NewProxyDialError(proxy.String(), err)
 			}
-
-			clients = append(clients, &fasthttp.HostClient{
-				MaxConns: safeUintToInt(maxConns),
-				IsTLS:    isTLS,
-				TLSConfig: &tls.Config{
-					InsecureSkipVerify: skipVerify, //nolint:gosec
-				},
-				Addr:                          addr,
-				Dial:                          dialFunc,
-				MaxIdleConnDuration:           timeout,
-				MaxConnDuration:               timeout,
-				WriteTimeout:                  timeout,
-				ReadTimeout:                   timeout,
-				DisableHeaderNamesNormalizing: true,
-				DisablePathNormalizing:        true,
-				NoDefaultUserAgentHeader:      true,
-			},
-			)
+			dialFuncs = append(dialFuncs, dialFunc)
 		}
 
-		return clients, nil
+		// With proxies a worker picks a different client per request, so a
+		// per-worker client set would open one connection per worker per proxy.
+		// The clients stay shared here and only the pool strategy is tuned.
+		clients := make([]*fasthttp.HostClient, 0, proxiesLen)
+		for _, dialFunc := range dialFuncs {
+			clients = append(clients, newHostClient(addr, isTLS, tlsConfig, dialFunc, safeUintToInt(maxConns), timeout))
+		}
+
+		return func() []*fasthttp.HostClient { return clients }, nil
 	}
 
-	client := &fasthttp.HostClient{
-		MaxConns: safeUintToInt(maxConns),
-		IsTLS:    isTLS,
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: skipVerify, //nolint:gosec
-		},
-		Addr:                          requestURL.Host,
-		MaxIdleConnDuration:           timeout,
-		MaxConnDuration:               timeout,
-		WriteTimeout:                  timeout,
-		ReadTimeout:                   timeout,
-		DisableHeaderNamesNormalizing: true,
-		DisablePathNormalizing:        true,
-		NoDefaultUserAgentHeader:      true,
-	}
-	return []*fasthttp.HostClient{client}, nil
+	// Without proxies every worker drives exactly one connection, so each gets
+	// its own single-connection client and never touches a shared pool.
+	return func() []*fasthttp.HostClient {
+		return []*fasthttp.HostClient{
+			newHostClient(requestURL.Host, isTLS, tlsConfig, nil, 1, timeout),
+		}
+	}, nil
 }
 
 // NewProxyDialFunc creates a dial function for the given proxy URL.

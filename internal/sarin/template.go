@@ -756,6 +756,86 @@ func NewDefaultBodyTemplateFuncMap(
 	return funcMap
 }
 
+// templateSet pairs a root template with the func map backing it, so a value can
+// be compiled against those funcs directly when its shape allows it.
+type templateSet struct {
+	root  *template.Template
+	funcs template.FuncMap
+}
+
+// compileSimpleTemplate returns a renderer for the subset of templates built
+// only from literal text and zero-argument calls to funcs returning a string -
+// `{{ fakeit_UUID }}`, `{"id":"{{ fakeit_UUID }}"}` and the like, which is what
+// the overwhelming majority of configurations use. Rendering those directly
+// skips text/template's reflection-based execution, which costs roughly a
+// microsecond and half a dozen allocations per value.
+//
+// Anything outside that subset - arguments, pipelines, .Values references,
+// if/range, funcs returning something other than a string - returns nil so the
+// caller falls back to text/template and the output stays identical.
+func compileSimpleTemplate(tmpl *template.Template, funcs template.FuncMap) func() string {
+	if tmpl.Tree == nil || tmpl.Root == nil {
+		return nil
+	}
+
+	type segment struct {
+		text string
+		fn   func() string
+	}
+
+	segments := make([]segment, 0, len(tmpl.Root.Nodes))
+	for _, node := range tmpl.Root.Nodes {
+		switch n := node.(type) {
+		case *parse.TextNode:
+			segments = append(segments, segment{text: string(n.Text)})
+
+		case *parse.ActionNode:
+			pipe := n.Pipe
+			if pipe == nil || len(pipe.Decl) != 0 || len(pipe.Cmds) != 1 || len(pipe.Cmds[0].Args) != 1 {
+				return nil
+			}
+			identifier, ok := pipe.Cmds[0].Args[0].(*parse.IdentifierNode)
+			if !ok {
+				return nil
+			}
+			fn, ok := funcs[identifier.Ident].(func() string)
+			if !ok {
+				return nil
+			}
+			segments = append(segments, segment{fn: fn})
+
+		default:
+			return nil
+		}
+	}
+
+	switch len(segments) {
+	case 0:
+		return func() string { return "" }
+	case 1:
+		if segments[0].fn != nil {
+			return segments[0].fn
+		}
+		text := segments[0].text
+		return func() string { return text }
+	}
+
+	// The buffer is reused across renders; the generator it belongs to is owned
+	// by a single worker goroutine.
+	var buf []byte
+	return func() string {
+		buf = buf[:0]
+		for i := range segments {
+			if segments[i].fn == nil {
+				buf = append(buf, segments[i].text...)
+				continue
+			}
+			buf = append(buf, segments[i].fn()...)
+		}
+		return string(buf)
+	}
+}
+
 func hasTemplateActions(tmpl *template.Template) bool {
 	if tmpl.Tree == nil || tmpl.Root == nil {
 		return false
