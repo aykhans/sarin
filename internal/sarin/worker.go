@@ -94,7 +94,6 @@ func (s sarin) workerStatsWithDynamic(
 ) {
 	for range jobs {
 		req.Reset()
-		resp.Reset()
 
 		if err := requestGenerator(req); err != nil {
 			s.responses.Add(err.Error(), 0)
@@ -138,8 +137,6 @@ func (s sarin) workerStatsWithStatic(
 	}
 
 	for range jobs {
-		resp.Reset()
-
 		startTime := time.Now()
 		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
 		respDuration := time.Since(startTime)
@@ -165,7 +162,6 @@ func (s sarin) workerNoStatsWithDynamic(
 ) {
 	for range jobs {
 		req.Reset()
-		resp.Reset()
 		if err := requestGenerator(req); err != nil {
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
@@ -201,7 +197,6 @@ func (s sarin) workerNoStatsWithStatic(
 	}
 
 	for range jobs {
-		resp.Reset()
 		startTime := time.Now()
 		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
 		if err == nil {
