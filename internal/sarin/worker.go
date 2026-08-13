@@ -12,19 +12,19 @@ import (
 const dryRunResponseKey = "dry-run"
 
 // statusCodeStrings contains pre-computed string representations for HTTP status codes 100-599.
-var statusCodeStrings = func() map[int]string {
-	m := make(map[int]string, 500)
-	for i := 100; i < 600; i++ {
-		m[i] = strconv.Itoa(i)
+var statusCodeStrings = func() [500]string {
+	var codes [500]string
+	for i := range codes {
+		codes[i] = strconv.Itoa(i + 100)
 	}
-	return m
+	return codes
 }()
 
 // statusCodeToString returns a string representation of the HTTP status code.
-// Uses a pre-computed map for codes 100-599, falls back to strconv.Itoa for others.
+// Uses a pre-computed table for codes 100-599, falls back to strconv.Itoa for others.
 func statusCodeToString(code int) string {
-	if s, ok := statusCodeStrings[code]; ok {
-		return s
+	if i := code - 100; i >= 0 && i < len(statusCodeStrings) {
+		return statusCodeStrings[i]
 	}
 	return strconv.Itoa(code)
 }
@@ -94,7 +94,6 @@ func (s sarin) workerStatsWithDynamic(
 ) {
 	for range jobs {
 		req.Reset()
-		resp.Reset()
 
 		if err := requestGenerator(req); err != nil {
 			s.responses.Add(err.Error(), 0)
@@ -138,8 +137,6 @@ func (s sarin) workerStatsWithStatic(
 	}
 
 	for range jobs {
-		resp.Reset()
-
 		startTime := time.Now()
 		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
 		respDuration := time.Since(startTime)
@@ -165,7 +162,6 @@ func (s sarin) workerNoStatsWithDynamic(
 ) {
 	for range jobs {
 		req.Reset()
-		resp.Reset()
 		if err := requestGenerator(req); err != nil {
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
@@ -201,7 +197,6 @@ func (s sarin) workerNoStatsWithStatic(
 	}
 
 	for range jobs {
-		resp.Reset()
 		startTime := time.Now()
 		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
 		if err == nil {
