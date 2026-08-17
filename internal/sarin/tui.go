@@ -2,6 +2,7 @@ package sarin
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -14,6 +15,16 @@ import (
 )
 
 type tickMsg time.Time
+
+// logBatch carries the log lines accumulated since the last repaint.
+type logBatch []runtimeLog
+
+const (
+	// logBoxLines is how many lines the log box shows at once.
+	logBoxLines = 8
+	// logBatchInterval is how often accumulated logs are handed to the program.
+	logBatchInterval = 250 * time.Millisecond
+)
 
 var (
 	helpStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#d1d1d1"))
@@ -96,8 +107,10 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case runtimeLog:
-		m.logs = append(m.logs[1:], renderRuntimeLog(msg))
+	case logBatch:
+		for _, entry := range msg {
+			m.logs = append(m.logs[1:], renderRuntimeLog(entry))
+		}
 		if m.ctx.Err() != nil {
 			return m, tea.Quit
 		}
@@ -174,8 +187,10 @@ func (m infiniteProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case runtimeLog:
-		m.logs = append(m.logs[1:], renderRuntimeLog(msg))
+	case logBatch:
+		for _, entry := range msg {
+			m.logs = append(m.logs[1:], renderRuntimeLog(entry))
+		}
 		if m.ctx.Err() != nil {
 			m.quit = true
 			return m, tea.Quit
@@ -247,7 +262,7 @@ func (s sarin) streamProgress(
 				progress.WithFillCharacters(progress.DefaultFullCharFullBlock, progress.DefaultEmptyCharBlock),
 			),
 			startTime: time.Now(),
-			logs:      make([]string, 8),
+			logs:      make([]string, logBoxLines),
 			counter:   counter,
 			maxValue:  total,
 			showBar:   showBar,
@@ -278,7 +293,7 @@ func (s sarin) streamProgress(
 			),
 			startTime: time.Now(),
 			counter:   counter,
-			logs:      make([]string, 8),
+			logs:      make([]string, logBoxLines),
 			showBar:   showBar,
 			ctx:       ctx,
 			stop:      stopCtrl.Stop,
@@ -291,9 +306,35 @@ func (s sarin) streamProgress(
 	stopCtrl.AttachProgram(program)
 	defer stopCtrl.AttachProgram(nil)
 
+	// Bubble Tea repaints once per message, so forwarding every log made the run
+	// wait on the terminal. Send only what the box shows, on a fixed cadence.
 	go func() {
-		for msg := range logChannel {
-			program.Send(msg)
+		ticker := time.NewTicker(logBatchInterval)
+		defer ticker.Stop()
+
+		pending := make(logBatch, 0, logBoxLines)
+		flush := func() {
+			if len(pending) == 0 {
+				return
+			}
+			program.Send(slices.Clone(pending))
+			pending = pending[:0]
+		}
+
+		for {
+			select {
+			case entry, ok := <-logChannel:
+				if !ok {
+					flush()
+					return
+				}
+				if len(pending) == logBoxLines {
+					pending = append(pending[:0], pending[1:]...)
+				}
+				pending = append(pending, entry)
+			case <-ticker.C:
+				flush()
+			}
 		}
 	}()
 
