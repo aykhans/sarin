@@ -858,6 +858,7 @@ func (m *printConfigModel) handleResize(msg tea.WindowSizeMsg) {
 
 	if !m.ready {
 		m.viewport = viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
+		m.viewport.SetHorizontalStep(0)
 		m.viewport.SetContent(m.contentWithLineNumbers())
 		m.ready = true
 	} else {

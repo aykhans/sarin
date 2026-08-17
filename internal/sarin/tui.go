@@ -242,7 +242,10 @@ func (s sarin) streamProgress(
 	var program *tea.Program
 	if total > 0 {
 		model := progressModel{
-			progress:  progress.New(progress.WithColors(lipgloss.Color("#151594"), lipgloss.Color("#00D4FF"))),
+			progress: progress.New(
+				progress.WithColors(lipgloss.Color("#151594"), lipgloss.Color("#00D4FF")),
+				progress.WithFillCharacters(progress.DefaultFullCharFullBlock, progress.DefaultEmptyCharBlock),
+			),
 			startTime: time.Now(),
 			logs:      make([]string, 8),
 			counter:   counter,
