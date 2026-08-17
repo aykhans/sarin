@@ -17,7 +17,6 @@ import (
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/styles"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/term"
 	"go.aykhans.me/sarin/internal/sarin"
 	"go.aykhans.me/sarin/internal/script"
 	"go.aykhans.me/sarin/internal/types"
@@ -254,7 +253,7 @@ func (config Config) Print() bool {
 	}
 
 	// Pipe mode: output raw content directly
-	if !term.IsTerminal(os.Stdout.Fd()) {
+	if !sarin.IsInteractiveTerminal(os.Stdout.Fd()) {
 		fmt.Println(string(configYAML))
 		os.Exit(0)
 	}

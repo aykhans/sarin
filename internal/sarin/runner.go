@@ -51,6 +51,18 @@ func SplitLogLevels(levels string) []string {
 	return out
 }
 
+// IsInteractiveTerminal reports whether fd is a terminal that can actually be
+// drawn on. A pty reports as a terminal even while its size is still zero, and
+// Bubble Tea paints into a width x height cell buffer, so a zero dimension
+// renders nothing at all.
+func IsInteractiveTerminal(fd uintptr) bool {
+	if !term.IsTerminal(fd) {
+		return false
+	}
+	width, height, err := term.GetSize(fd)
+	return err == nil && width > 0 && height > 0
+}
+
 // respLogger logs a single completed response.
 type respLogger func(duration time.Duration, resp *fasthttp.Response)
 
@@ -302,7 +314,7 @@ func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
 		totalRequests = *s.totalRequests
 	}
 
-	onTerminal := term.IsTerminal(os.Stdout.Fd())
+	onTerminal := IsInteractiveTerminal(os.Stdout.Fd())
 	// The progress bar needs an interactive terminal to render.
 	showProgressBar := s.showProgress && onTerminal
 	// The bubbletea TUI hosts the bar and/or the live log box, so it runs whenever
