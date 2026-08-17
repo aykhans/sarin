@@ -26,8 +26,8 @@ Sarin is designed for efficient HTTP load testing with minimal resource consumpt
 
 | ✅ Supported                                               | ❌ Not Supported                |
 | ---------------------------------------------------------- | ------------------------------- |
-| High-performance with low memory footprint                 | Extensive response statistics   |
-| Dynamic requests via 340+ template functions               | Web UI or complex TUI           |
+| High-performance with low memory footprint                 | Web UI or complex TUI           |
+| Dynamic requests via 340+ template functions               | Detailed response body analysis |
 | Request scripting with Lua and JavaScript                  | Distributed load testing        |
 | Multiple proxy protocols<br>(HTTP, HTTPS, SOCKS5, SOCKS5H) | HTTP/2, HTTP/3, WebSocket, gRPC |
 | Captcha solving<br>(2Captcha, Anti-Captcha, CapSolver)     | Plugins / extensions ecosystem  |
