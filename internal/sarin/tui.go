@@ -7,10 +7,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type tickMsg time.Time
@@ -82,15 +82,15 @@ func (m progressModel) Init() tea.Cmd {
 
 func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC {
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
 			m.cancelling = true
 			m.stop()
 		}
 		return m, nil
 
 	case tea.WindowSizeMsg:
-		m.progress.Width = max(10, msg.Width-1)
+		m.progress.SetWidth(max(10, msg.Width-1))
 		if m.ctx.Err() != nil {
 			return m, tea.Quit
 		}
@@ -117,7 +117,7 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m progressModel) View() string {
+func (m progressModel) View() tea.View {
 	var b strings.Builder
 	if box := renderLogBox(m.logs); box != "" {
 		b.WriteString(box)
@@ -138,7 +138,7 @@ func (m progressModel) View() string {
 
 	b.WriteString("\n\n  ")
 	b.WriteString(helpLine(m.cancelling))
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 func progressTickCmd() tea.Cmd {
@@ -167,8 +167,8 @@ func (m infiniteProgressModel) Init() tea.Cmd {
 
 func (m infiniteProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC {
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
 			m.cancelling = true
 			m.stop()
 		}
@@ -193,7 +193,7 @@ func (m infiniteProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m infiniteProgressModel) View() string {
+func (m infiniteProgressModel) View() tea.View {
 	var b strings.Builder
 	if box := renderLogBox(m.logs); box != "" {
 		b.WriteString(box)
@@ -206,7 +206,7 @@ func (m infiniteProgressModel) View() string {
 			b.WriteString("\n\n  ")
 			b.WriteString(helpLine(m.cancelling))
 		}
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if m.quit {
@@ -227,7 +227,7 @@ func (m infiniteProgressModel) View() string {
 		b.WriteString("\n\n  ")
 		b.WriteString(helpLine(m.cancelling))
 	}
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 func (s sarin) streamProgress(
@@ -242,7 +242,7 @@ func (s sarin) streamProgress(
 	var program *tea.Program
 	if total > 0 {
 		model := progressModel{
-			progress:  progress.New(progress.WithGradient("#151594", "#00D4FF")),
+			progress:  progress.New(progress.WithColors(lipgloss.Color("#151594"), lipgloss.Color("#00D4FF"))),
 			startTime: time.Now(),
 			logs:      make([]string, 8),
 			counter:   counter,

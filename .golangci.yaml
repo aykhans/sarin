@@ -55,6 +55,17 @@ linters:
     - wastedassign
 
   settings:
+    errcheck:
+      # Lip Gloss print helpers wrap fmt.Fprint* and fail only on unactionable
+      # write errors (broken pipe, full disk). errcheck excludes the fmt
+      # equivalents by default; these are excluded for the same reason.
+      exclude-functions:
+        - charm.land/lipgloss/v2.Print
+        - charm.land/lipgloss/v2.Printf
+        - charm.land/lipgloss/v2.Println
+        - charm.land/lipgloss/v2.Fprint
+        - charm.land/lipgloss/v2.Fprintf
+        - charm.land/lipgloss/v2.Fprintln
     staticcheck:
       checks:
         - "all"
@@ -80,6 +91,13 @@ linters:
         linters:
           - staticcheck
         text: "SA5011"
+
+      # Counterpart to the errcheck exclusions above: gosec's G104 keeps its
+      # own allowlist, which covers fmt but not the Lip Gloss print helpers.
+      - linters:
+          - gosec
+        text: "G104"
+        source: "lipgloss\\.(Print|Printf|Println|Fprint|Fprintf|Fprintln)\\("
 
 formatters:
   enable:
