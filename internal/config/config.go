@@ -248,7 +248,7 @@ func (config Config) MarshalYAML() (any, error) {
 func (config Config) Print() bool {
 	configYAML, err := yaml.Marshal(config)
 	if err != nil {
-		lipgloss.Fprintln(os.Stderr, StyleRed.Render("Error marshaling config to yaml: "+err.Error()))
+		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render("Error marshaling config to yaml: "+err.Error())))
 		os.Exit(1)
 	}
 
@@ -267,13 +267,13 @@ func (config Config) Print() bool {
 		glamour.WithWordWrap(0),
 	)
 	if err != nil {
-		lipgloss.Fprintln(os.Stderr, StyleRed.Render(err.Error()))
+		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render(err.Error())))
 		os.Exit(1)
 	}
 
 	content, err := renderer.Render("```yaml\n" + string(configYAML) + "```")
 	if err != nil {
-		lipgloss.Fprintln(os.Stderr, StyleRed.Render(err.Error()))
+		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render(err.Error())))
 		os.Exit(1)
 	}
 
@@ -283,7 +283,7 @@ func (config Config) Print() bool {
 
 	m, err := p.Run()
 	if err != nil {
-		lipgloss.Fprintln(os.Stderr, StyleRed.Render(err.Error()))
+		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render(err.Error())))
 		os.Exit(1)
 	}
 
@@ -613,11 +613,11 @@ func ReadAllConfigs() *Config {
 	_ = utilsErr.MustHandle(err,
 		utilsErr.OnType(func(err types.CLIUnexpectedArgsError) error {
 			cliParser.PrintHelp()
-			lipgloss.Fprintln(os.Stderr,
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 				StyleYellow.Render(
 					"\nUnexpected CLI arguments provided: ",
 				)+strings.Join(err.Args, ", "),
-			)
+			))
 			os.Exit(1)
 			return nil
 		}),
@@ -635,20 +635,20 @@ func ReadAllConfigs() *Config {
 		_ = utilsErr.MustHandle(err,
 			utilsErr.OnType(func(err types.ConfigFileReadError) error {
 				cliParser.PrintHelp()
-				lipgloss.Fprintln(os.Stderr,
+				fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 					StyleYellow.Render(
 						fmt.Sprintf("\nFailed to read config file (%s): ", configFile.Path())+err.Error(),
 					),
-				)
+				))
 				os.Exit(1)
 				return nil
 			}),
 			utilsErr.OnType(func(err types.UnmarshalError) error {
-				lipgloss.Fprintln(os.Stderr,
+				fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 					StyleYellow.Render(
 						fmt.Sprintf("\nFailed to parse config file (%s): ", configFile.Path())+err.Error(),
 					),
-				)
+				))
 				os.Exit(1)
 				return nil
 			}),
@@ -751,13 +751,13 @@ func validateScriptSource(script string) error {
 func printParseErrors(parserName string, errors ...types.FieldParseError) {
 	for _, fieldErr := range errors {
 		if fieldErr.Value == "" {
-			lipgloss.Fprintln(os.Stderr,
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 				StyleYellow.Render(fmt.Sprintf("[%s] Field '%s': ", parserName, fieldErr.Field))+fieldErr.Err.Error(),
-			)
+			))
 		} else {
-			lipgloss.Fprintln(os.Stderr,
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 				StyleYellow.Render(fmt.Sprintf("[%s] Field '%s' (%s): ", parserName, fieldErr.Field, fieldErr.Value))+fieldErr.Err.Error(),
-			)
+			))
 		}
 	}
 }

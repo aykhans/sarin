@@ -55,10 +55,6 @@ linters:
     - wastedassign
 
   settings:
-    errcheck:
-      exclude-functions:
-        - charm.land/lipgloss/v2.Println
-        - charm.land/lipgloss/v2.Fprintln(os.Stderr)
     staticcheck:
       checks:
         - "all"
@@ -86,9 +82,9 @@ linters:
         text: "SA5011"
 
       - linters:
+          - errcheck
           - gosec
-        text: "G104"
-        source: "lipgloss\\.(Print|Printf|Println|Fprint|Fprintf|Fprintln)\\("
+        source: "lipgloss\\.Println\\("
 
 formatters:
   enable:

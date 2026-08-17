@@ -33,13 +33,13 @@ func main() {
 		utilsErr.OnType(func(err types.FieldValidationErrors) error {
 			for _, fieldErr := range err.Errors {
 				if fieldErr.Value == "" {
-					lipgloss.Fprintln(os.Stderr,
+					fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 						config.StyleYellow.Render(fmt.Sprintf("[VALIDATION] Field '%s': ", fieldErr.Field))+fieldErr.Err.Error(),
-					)
+					))
 				} else {
-					lipgloss.Fprintln(os.Stderr,
+					fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 						config.StyleYellow.Render(fmt.Sprintf("[VALIDATION] Field '%s' (%s): ", fieldErr.Field, fieldErr.Value))+fieldErr.Err.Error(),
-					)
+					))
 				}
 			}
 			os.Exit(1)
@@ -59,17 +59,17 @@ func main() {
 	)
 	_ = utilsErr.MustHandle(err,
 		utilsErr.OnType(func(err types.ProxyDialError) error {
-			lipgloss.Fprintln(os.Stderr, config.StyleRed.Render("[PROXY] ")+err.Error())
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(config.StyleRed.Render("[PROXY] ")+err.Error()))
 			os.Exit(1)
 			return nil
 		}),
 		utilsErr.OnSentinel(types.ErrScriptEmpty, func(err error) error {
-			lipgloss.Fprintln(os.Stderr, config.StyleRed.Render("[SCRIPT] ")+err.Error())
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(config.StyleRed.Render("[SCRIPT] ")+err.Error()))
 			os.Exit(1)
 			return nil
 		}),
 		utilsErr.OnType(func(err types.ScriptLoadError) error {
-			lipgloss.Fprintln(os.Stderr, config.StyleRed.Render("[SCRIPT] ")+err.Error())
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(config.StyleRed.Render("[SCRIPT] ")+err.Error()))
 			os.Exit(1)
 			return nil
 		}),
