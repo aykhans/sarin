@@ -1,0 +1,36 @@
+name: nix
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - "nix/**"
+      - "flake.nix"
+      - "flake.lock"
+  workflow_call:
+    inputs:
+      ref:
+        description: "Ref to check out. Defaults to the triggering ref."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: nix build
+        run: nix build .#default --no-link --print-build-logs

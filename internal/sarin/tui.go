@@ -2,18 +2,29 @@ package sarin
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type tickMsg time.Time
+
+// logBatch carries the log lines accumulated since the last repaint.
+type logBatch []runtimeLog
+
+const (
+	// logBoxLines is how many lines the log box shows at once.
+	logBoxLines = 8
+	// logBatchInterval is how often accumulated logs are handed to the program.
+	logBatchInterval = 250 * time.Millisecond
+)
 
 var (
 	helpStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#d1d1d1"))
@@ -82,22 +93,24 @@ func (m progressModel) Init() tea.Cmd {
 
 func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC {
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
 			m.cancelling = true
 			m.stop()
 		}
 		return m, nil
 
 	case tea.WindowSizeMsg:
-		m.progress.Width = max(10, msg.Width-1)
+		m.progress.SetWidth(max(10, msg.Width-1))
 		if m.ctx.Err() != nil {
 			return m, tea.Quit
 		}
 		return m, nil
 
-	case runtimeLog:
-		m.logs = append(m.logs[1:], renderRuntimeLog(msg))
+	case logBatch:
+		for _, entry := range msg {
+			m.logs = append(m.logs[1:], renderRuntimeLog(entry))
+		}
 		if m.ctx.Err() != nil {
 			return m, tea.Quit
 		}
@@ -117,7 +130,7 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m progressModel) View() string {
+func (m progressModel) View() tea.View {
 	var b strings.Builder
 	if box := renderLogBox(m.logs); box != "" {
 		b.WriteString(box)
@@ -138,7 +151,7 @@ func (m progressModel) View() string {
 
 	b.WriteString("\n\n  ")
 	b.WriteString(helpLine(m.cancelling))
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 func progressTickCmd() tea.Cmd {
@@ -167,15 +180,17 @@ func (m infiniteProgressModel) Init() tea.Cmd {
 
 func (m infiniteProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC {
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
 			m.cancelling = true
 			m.stop()
 		}
 		return m, nil
 
-	case runtimeLog:
-		m.logs = append(m.logs[1:], renderRuntimeLog(msg))
+	case logBatch:
+		for _, entry := range msg {
+			m.logs = append(m.logs[1:], renderRuntimeLog(entry))
+		}
 		if m.ctx.Err() != nil {
 			m.quit = true
 			return m, tea.Quit
@@ -193,7 +208,7 @@ func (m infiniteProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m infiniteProgressModel) View() string {
+func (m infiniteProgressModel) View() tea.View {
 	var b strings.Builder
 	if box := renderLogBox(m.logs); box != "" {
 		b.WriteString(box)
@@ -206,7 +221,7 @@ func (m infiniteProgressModel) View() string {
 			b.WriteString("\n\n  ")
 			b.WriteString(helpLine(m.cancelling))
 		}
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if m.quit {
@@ -227,7 +242,7 @@ func (m infiniteProgressModel) View() string {
 		b.WriteString("\n\n  ")
 		b.WriteString(helpLine(m.cancelling))
 	}
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 func (s sarin) streamProgress(
@@ -242,9 +257,12 @@ func (s sarin) streamProgress(
 	var program *tea.Program
 	if total > 0 {
 		model := progressModel{
-			progress:  progress.New(progress.WithGradient("#151594", "#00D4FF")),
+			progress: progress.New(
+				progress.WithColors(lipgloss.Color("#151594"), lipgloss.Color("#00D4FF")),
+				progress.WithFillCharacters(progress.DefaultFullCharFullBlock, progress.DefaultEmptyCharBlock),
+			),
 			startTime: time.Now(),
-			logs:      make([]string, 8),
+			logs:      make([]string, logBoxLines),
 			counter:   counter,
 			maxValue:  total,
 			showBar:   showBar,
@@ -275,7 +293,7 @@ func (s sarin) streamProgress(
 			),
 			startTime: time.Now(),
 			counter:   counter,
-			logs:      make([]string, 8),
+			logs:      make([]string, logBoxLines),
 			showBar:   showBar,
 			ctx:       ctx,
 			stop:      stopCtrl.Stop,
@@ -288,9 +306,35 @@ func (s sarin) streamProgress(
 	stopCtrl.AttachProgram(program)
 	defer stopCtrl.AttachProgram(nil)
 
+	// Bubble Tea repaints once per message, so forwarding every log made the run
+	// wait on the terminal. Send only what the box shows, on a fixed cadence.
 	go func() {
-		for msg := range logChannel {
-			program.Send(msg)
+		ticker := time.NewTicker(logBatchInterval)
+		defer ticker.Stop()
+
+		pending := make(logBatch, 0, logBoxLines)
+		flush := func() {
+			if len(pending) == 0 {
+				return
+			}
+			program.Send(slices.Clone(pending))
+			pending = pending[:0]
+		}
+
+		for {
+			select {
+			case entry, ok := <-logChannel:
+				if !ok {
+					flush()
+					return
+				}
+				if len(pending) == logBoxLines {
+					pending = append(pending[:0], pending[1:]...)
+				}
+				pending = append(pending, entry)
+			case <-ticker.C:
+				flush()
+			}
 		}
 	}()
 

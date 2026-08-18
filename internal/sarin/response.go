@@ -2,7 +2,6 @@ package sarin
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"os"
 	"slices"
@@ -10,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 	"go.yaml.in/yaml/v4"
 )
 
@@ -159,7 +158,7 @@ func (data *SarinResponseData) PrintTable() {
 			return cellStyle
 		})
 
-	fmt.Println(tbl)
+	lipgloss.Println(tbl)
 }
 
 func (data *SarinResponseData) PrintJSON() {

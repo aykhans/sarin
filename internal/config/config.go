@@ -12,12 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/styles"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/term"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/styles"
+	"charm.land/lipgloss/v2"
 	"go.aykhans.me/sarin/internal/sarin"
 	"go.aykhans.me/sarin/internal/script"
 	"go.aykhans.me/sarin/internal/types"
@@ -249,12 +248,12 @@ func (config Config) MarshalYAML() (any, error) {
 func (config Config) Print() bool {
 	configYAML, err := yaml.Marshal(config)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, StyleRed.Render("Error marshaling config to yaml: "+err.Error()))
+		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render("Error marshaling config to yaml: "+err.Error())))
 		os.Exit(1)
 	}
 
 	// Pipe mode: output raw content directly
-	if !term.IsTerminal(os.Stdout.Fd()) {
+	if !sarin.IsInteractiveTerminal(os.Stdout.Fd()) {
 		fmt.Println(string(configYAML))
 		os.Exit(0)
 	}
@@ -268,25 +267,23 @@ func (config Config) Print() bool {
 		glamour.WithWordWrap(0),
 	)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, StyleRed.Render(err.Error()))
+		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render(err.Error())))
 		os.Exit(1)
 	}
 
 	content, err := renderer.Render("```yaml\n" + string(configYAML) + "```")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, StyleRed.Render(err.Error()))
+		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render(err.Error())))
 		os.Exit(1)
 	}
 
 	p := tea.NewProgram(
 		printConfigModel{content: strings.Trim(content, "\n"), rawContent: configYAML},
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 	)
 
 	m, err := p.Run()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, StyleRed.Render(err.Error()))
+		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render(err.Error())))
 		os.Exit(1)
 	}
 
@@ -616,11 +613,11 @@ func ReadAllConfigs() *Config {
 	_ = utilsErr.MustHandle(err,
 		utilsErr.OnType(func(err types.CLIUnexpectedArgsError) error {
 			cliParser.PrintHelp()
-			fmt.Fprintln(os.Stderr,
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 				StyleYellow.Render(
 					"\nUnexpected CLI arguments provided: ",
 				)+strings.Join(err.Args, ", "),
-			)
+			))
 			os.Exit(1)
 			return nil
 		}),
@@ -638,20 +635,20 @@ func ReadAllConfigs() *Config {
 		_ = utilsErr.MustHandle(err,
 			utilsErr.OnType(func(err types.ConfigFileReadError) error {
 				cliParser.PrintHelp()
-				fmt.Fprintln(os.Stderr,
+				fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 					StyleYellow.Render(
 						fmt.Sprintf("\nFailed to read config file (%s): ", configFile.Path())+err.Error(),
 					),
-				)
+				))
 				os.Exit(1)
 				return nil
 			}),
 			utilsErr.OnType(func(err types.UnmarshalError) error {
-				fmt.Fprintln(os.Stderr,
+				fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 					StyleYellow.Render(
 						fmt.Sprintf("\nFailed to parse config file (%s): ", configFile.Path())+err.Error(),
 					),
-				)
+				))
 				os.Exit(1)
 				return nil
 			}),
@@ -754,13 +751,13 @@ func validateScriptSource(script string) error {
 func printParseErrors(parserName string, errors ...types.FieldParseError) {
 	for _, fieldErr := range errors {
 		if fieldErr.Value == "" {
-			fmt.Fprintln(os.Stderr,
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 				StyleYellow.Render(fmt.Sprintf("[%s] Field '%s': ", parserName, fieldErr.Field))+fieldErr.Err.Error(),
-			)
+			))
 		} else {
-			fmt.Fprintln(os.Stderr,
+			fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 				StyleYellow.Render(fmt.Sprintf("[%s] Field '%s' (%s): ", parserName, fieldErr.Field, fieldErr.Value))+fieldErr.Err.Error(),
-			)
+			))
 		}
 	}
 }
@@ -801,7 +798,7 @@ func (m printConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
 			return m, tea.Quit
@@ -824,13 +821,22 @@ func (m printConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m printConfigModel) View() string {
+func (m printConfigModel) View() tea.View {
+	// AltScreen and MouseMode were program options in bubbletea v1; in v2 they
+	// are view properties, so every return path has to declare them.
+	newView := func(s string) tea.View {
+		v := tea.NewView(s)
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+
 	if !m.ready {
-		return "\n  Initializing..."
+		return newView("\n  Initializing...")
 	}
 
 	content := lipgloss.JoinHorizontal(lipgloss.Top, m.viewport.View(), m.scrollbar())
-	return fmt.Sprintf("%s\n%s\n%s", m.headerView(), content, m.footerView())
+	return newView(fmt.Sprintf("%s\n%s\n%s", m.headerView(), content, m.footerView()))
 }
 
 func (m *printConfigModel) saveContent() (printConfigModel, tea.Cmd) {
@@ -850,12 +856,13 @@ func (m *printConfigModel) handleResize(msg tea.WindowSizeMsg) {
 	width := msg.Width - scrollbarWidth
 
 	if !m.ready {
-		m.viewport = viewport.New(width, height)
+		m.viewport = viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
+		m.viewport.SetHorizontalStep(0)
 		m.viewport.SetContent(m.contentWithLineNumbers())
 		m.ready = true
 	} else {
-		m.viewport.Width = width
-		m.viewport.Height = height
+		m.viewport.SetWidth(width)
+		m.viewport.SetHeight(height)
 	}
 }
 
@@ -870,12 +877,12 @@ func (m printConfigModel) headerView() string {
 			printConfigKeyStyle.Render("ESC") + printConfigDescStyle.Render(" exit")
 		title = printConfigHelpStyle.Render(help)
 	}
-	line := strings.Repeat("─", max(0, m.viewport.Width+scrollbarWidth-lipgloss.Width(title)))
+	line := strings.Repeat("─", max(0, m.viewport.Width()+scrollbarWidth-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
 func (m printConfigModel) footerView() string {
-	return strings.Repeat("─", m.viewport.Width+scrollbarWidth)
+	return strings.Repeat("─", m.viewport.Width()+scrollbarWidth)
 }
 
 func (m printConfigModel) contentWithLineNumbers() string {
@@ -897,7 +904,7 @@ func (m printConfigModel) contentWithLineNumbers() string {
 }
 
 func (m printConfigModel) scrollbar() string {
-	height := m.viewport.Height
+	height := m.viewport.Height()
 	trackHeight := height - scrollbarBottomSpace
 	totalLines := m.viewport.TotalLineCount()
 

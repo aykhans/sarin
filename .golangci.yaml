@@ -81,6 +81,11 @@ linters:
           - staticcheck
         text: "SA5011"
 
+      - linters:
+          - errcheck
+          - gosec
+        source: "lipgloss\\.Println\\("
+
 formatters:
   enable:
     - gofmt
