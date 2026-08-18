@@ -27,9 +27,38 @@ jobs:
     with:
       ref: ${{ inputs.tag || github.ref }}
 
+  # nix/package.nix carries its own version string that has to be bumped by
+  # hand; catch a forgotten bump before the tag ships.
+  version:
+    name: Verify package version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Check nix/package.nix matches the release tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          expected="${TAG#v}"
+          actual="$(sed -n 's/^[[:space:]]*version = "\([^"]*\)".*/\1/p' nix/package.nix | head -1)"
+          if [ -z "$actual" ]; then
+            echo "::error file=nix/package.nix::could not read the version string"
+            exit 1
+          fi
+          if [ "$actual" != "$expected" ]; then
+            echo "::error file=nix/package.nix::version is '$actual' but the release tag is '$TAG' (expected '$expected')"
+            exit 1
+          fi
+          echo "nix/package.nix version '$actual' matches tag '$TAG'"
+
   build:
     name: Build binaries
-    needs: nix
+    needs: [nix, version]
     runs-on: ubuntu-latest
 
     steps:
