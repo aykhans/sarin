@@ -191,23 +191,28 @@ func applyRequestDataToFastHTTP(reqData *script.RequestData, req *fasthttp.Reque
 	}
 
 	if len(reqData.Cookies) > 0 {
-		var sb strings.Builder
-		for k, values := range reqData.Cookies {
-			for _, v := range values {
-				if sb.Len() > 0 {
-					sb.WriteString("; ")
-				}
-				sb.WriteString(k)
-				sb.WriteByte('=')
-				sb.WriteString(v)
-			}
-		}
-		req.Header.Add("Cookie", sb.String())
+		req.Header.Add("Cookie", cookieHeaderValue(reqData.Cookies))
 	}
 
 	if scheme == "https" {
 		req.URI().SetScheme("https")
 	}
+}
+
+// cookieHeaderValue joins cookies into a single Cookie header value ("a=1; b=2").
+func cookieHeaderValue(cookies map[string][]string) string {
+	var sb strings.Builder
+	for k, values := range cookies {
+		for _, v := range values {
+			if sb.Len() > 0 {
+				sb.WriteString("; ")
+			}
+			sb.WriteString(k)
+			sb.WriteByte('=')
+			sb.WriteString(v)
+		}
+	}
+	return sb.String()
 }
 
 func NewMethodGeneratorFunc(localRand *rand.Rand, methods []string, lazyRoot func() *template.Template) (requestDataGenerator, bool) {
