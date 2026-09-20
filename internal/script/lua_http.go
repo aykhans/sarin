@@ -92,17 +92,20 @@ func (e *LuaEngine) parseHTTPOptions(opts *lua.LTable, req *HTTPRequest) error {
 				return
 			}
 			req.Timeout, err = parseHTTPTimeout(string(timeout))
-		case httpOptionInsecure, httpOptionFollowRedirects:
+		case httpOptionInsecure:
 			flag, ok := v.(lua.LBool)
 			if !ok {
 				err = types.NewScriptHTTPOptionError(name, types.NewScriptTypeError("boolean", v.Type().String()))
 				return
 			}
-			if name == httpOptionInsecure {
-				req.Insecure = bool(flag)
-			} else {
-				req.FollowRedirects = bool(flag)
+			req.Insecure = bool(flag)
+		case httpOptionMaxRedirects:
+			count, ok := v.(lua.LNumber)
+			if !ok {
+				err = types.NewScriptHTTPOptionError(name, types.NewScriptTypeError("number", v.Type().String()))
+				return
 			}
+			req.MaxRedirects, err = parseHTTPMaxRedirects(float64(count))
 		default:
 			err = types.NewScriptHTTPOptionError(name, types.ErrScriptHTTPUnknownOption)
 		}

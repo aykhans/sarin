@@ -100,16 +100,22 @@ func (e *JsEngine) parseHTTPOptions(opts *goja.Object, req *HTTPRequest) error {
 			if req.Timeout, err = parseHTTPTimeout(timeout); err != nil {
 				return err
 			}
-		case httpOptionInsecure, httpOptionFollowRedirects:
+		case httpOptionInsecure:
 			flag, ok := value.Export().(bool)
 			if !ok {
 				return types.NewScriptHTTPOptionError(name, types.NewScriptTypeError("boolean", jsTypeName(value)))
 			}
 
-			if name == httpOptionInsecure {
-				req.Insecure = flag
-			} else {
-				req.FollowRedirects = flag
+			req.Insecure = flag
+		case httpOptionMaxRedirects:
+			count, ok := numberValue(value)
+			if !ok {
+				return types.NewScriptHTTPOptionError(name, types.NewScriptTypeError("number", jsTypeName(value)))
+			}
+
+			var err error
+			if req.MaxRedirects, err = parseHTTPMaxRedirects(count); err != nil {
+				return err
 			}
 		default:
 			return types.NewScriptHTTPOptionError(name, types.ErrScriptHTTPUnknownOption)
@@ -189,4 +195,16 @@ func (e *JsEngine) throw(err error) {
 		panic(e.runtime.NewGoError(err))
 	}
 	panic(errorValue)
+}
+
+// numberValue reports whether value is a JavaScript number, and returns it.
+func numberValue(value goja.Value) (float64, bool) {
+	switch number := value.Export().(type) {
+	case int64:
+		return float64(number), true
+	case float64:
+		return number, true
+	default:
+		return 0, false
+	}
 }

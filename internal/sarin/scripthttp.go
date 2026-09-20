@@ -11,9 +11,6 @@ import (
 	"go.aykhans.me/sarin/internal/types"
 )
 
-// scriptHTTPMaxRedirects is the redirect limit when followRedirects is set.
-const scriptHTTPMaxRedirects = 10
-
 // scriptHTTPDefaultTimeout is the default timeout for script requests, independent of -T.
 const scriptHTTPDefaultTimeout = 30 * time.Second
 
@@ -65,7 +62,7 @@ func newScriptHTTPClient(dialFunc fasthttp.DialFunc, defaultTimeout time.Duratio
 	}
 }
 
-// Do sends the request. With followRedirects the timeout applies to each hop.
+// Do sends the request. With maxRedirects the timeout applies to each hop.
 // It can return the following errors:
 //   - types.ScriptHTTPRequestError
 func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, error) {
@@ -116,8 +113,8 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 	}
 
 	req.SetTimeout(timeout)
-	if r.FollowRedirects {
-		err = client.DoRedirects(req, resp, scriptHTTPMaxRedirects)
+	if r.MaxRedirects > 0 {
+		err = client.DoRedirects(req, resp, r.MaxRedirects)
 	} else {
 		err = client.Do(req, resp)
 	}

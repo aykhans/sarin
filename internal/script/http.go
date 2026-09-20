@@ -1,7 +1,9 @@
 package script
 
 import (
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,15 +12,15 @@ import (
 
 // HTTPRequest is a request made by a script through the http.* functions.
 type HTTPRequest struct {
-	Method          string
-	URL             string
-	Headers         map[string][]string
-	Params          map[string][]string
-	Cookies         map[string][]string
-	Body            string
-	Timeout         time.Duration // zero means the doer's default timeout
-	Insecure        bool
-	FollowRedirects bool
+	Method       string
+	URL          string
+	Headers      map[string][]string
+	Params       map[string][]string
+	Cookies      map[string][]string
+	Body         string
+	Timeout      time.Duration // zero means the doer's default timeout
+	Insecure     bool
+	MaxRedirects int
 }
 
 // HTTPResponse is the response returned to a script by the http.* functions.
@@ -63,14 +65,14 @@ const httpDefaultMethod = http.MethodGet
 
 // Option keys accepted by the http function.
 const (
-	httpOptionMethod          = "method"
-	httpOptionHeaders         = "headers"
-	httpOptionParams          = "params"
-	httpOptionCookies         = "cookies"
-	httpOptionBody            = "body"
-	httpOptionTimeout         = "timeout"
-	httpOptionInsecure        = "insecure"
-	httpOptionFollowRedirects = "followRedirects"
+	httpOptionMethod       = "method"
+	httpOptionHeaders      = "headers"
+	httpOptionParams       = "params"
+	httpOptionCookies      = "cookies"
+	httpOptionBody         = "body"
+	httpOptionTimeout      = "timeout"
+	httpOptionInsecure     = "insecure"
+	httpOptionMaxRedirects = "maxRedirects"
 )
 
 // httpBridge connects http to the doer. Calls only work while transform runs.
@@ -95,6 +97,19 @@ func (b *httpBridge) do(req *HTTPRequest) (*HTTPResponse, error) {
 		return nil, types.ErrScriptHTTPMethodEmpty
 	}
 	return b.doer.Do(req)
+}
+
+// parseHTTPMaxRedirects checks that the redirect limit is a non-negative whole number.
+// It can return the following errors:
+//   - types.ScriptHTTPOptionError
+func parseHTTPMaxRedirects(count float64) (int, error) {
+	if count < 0 || count != math.Trunc(count) {
+		return 0, types.NewScriptHTTPOptionError(
+			httpOptionMaxRedirects,
+			types.NewScriptTypeError("a whole number of 0 or more", strconv.FormatFloat(count, 'f', -1, 64)),
+		)
+	}
+	return int(count), nil
 }
 
 // parseHTTPTimeout parses a Go duration string such as "500ms" or "2s".
