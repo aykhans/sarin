@@ -1087,3 +1087,154 @@ js: "@./scripts/body.js"
 ```
 
 </details>
+
+**Fetch a value from another endpoint before each request:**
+
+Scripts can send their own requests with `http`. Here each request first fetches a CSRF token and sends it in a header and cookie. See [HTTP Requests in Scripts](configuration.md#http-requests-in-scripts) for all options.
+
+```sh
+sarin -U http://example.com/api/orders -r 1000 -c 10 \
+  -M POST \
+  -lua 'function transform(req)
+    local res = http("http://example.com/csrf")
+    req.headers["X-CSRF-Token"] = json.decode(res.body).token
+    req.cookies["session"] = res:cookie("session")
+    return req
+  end'
+```
+
+<details>
+<summary>YAML equivalent</summary>
+
+```yaml
+url: http://example.com/api/orders
+requests: 1000
+concurrency: 10
+method: POST
+lua: |
+    function transform(req)
+        local res = http("http://example.com/csrf")
+        req.headers["X-CSRF-Token"] = json.decode(res.body).token
+        req.cookies["session"] = res:cookie("session")
+        return req
+    end
+```
+
+</details>
+
+**Log in once per worker and reuse the token (JavaScript):**
+
+```yaml
+url: http://example.com/api/profile
+requests: 1000
+concurrency: 10
+js: |
+    let token;
+
+    function login() {
+        const res = http("http://example.com/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user: "test", password: "secret" }),
+        });
+        if (res.status !== 200) throw new Error("login failed: " + res.status);
+        return res.json().token;
+    }
+
+    function transform(req) {
+        if (!token) token = login();
+        req.headers["Authorization"] = "Bearer " + token;
+        return req;
+    }
+```
+
+**Chain two calls, then use the result in the URL path (Lua):**
+
+```yaml
+url: http://example.com/api/placeholder
+requests: 500
+concurrency: 10
+lua: |
+    function transform(req)
+        local token = json.decode(http("http://example.com/login", {
+            method = "POST",
+            body = json.encode({ user = "test", password = "secret" }),
+            headers = { ["Content-Type"] = "application/json" },
+        }).body).token
+
+        local orders = json.decode(http("http://example.com/api/orders", {
+            headers = { Authorization = "Bearer " .. token },
+        }).body)
+
+        req.path = "/api/orders/" .. orders[1].id
+        req.headers["Authorization"] = "Bearer " .. token
+        return req
+    end
+```
+
+**Refresh a token only when it expires (JavaScript):**
+
+```yaml
+url: http://example.com/api/profile
+requests: 5000
+concurrency: 20
+js: |
+    let token;
+    let expiresAt = 0;
+
+    function transform(req) {
+        if (Date.now() >= expiresAt) {
+            const res = http("http://example.com/login", { method: "POST", body: "{}" });
+            token = res.json().token;
+            expiresAt = Date.now() + 60000; // refresh once a minute per worker
+        }
+        req.headers["Authorization"] = "Bearer " + token;
+        return req;
+    }
+```
+
+**Follow redirects and use a slower timeout for a login endpoint:**
+
+```sh
+sarin -U http://example.com/api/me -r 200 -c 5 \
+  -lua 'function transform(req)
+    local res = http("http://example.com/login", {
+      method = "POST",
+      maxRedirects = 5,
+      timeout = "10s",
+    })
+    req.cookies["session"] = res:cookie("session")
+    return req
+  end'
+```
+
+**Keep sending the main request even when the extra call fails:**
+
+A failed `http` call raises an error, which skips the main request and records the failure in the results. Catch it to decide yourself:
+
+```sh
+sarin -U http://example.com/api/items -r 1000 -c 10 \
+  -lua 'function transform(req)
+    local ok, res = pcall(http, "http://example.com/api/flags")
+    if ok and res.status == 200 then
+      req.headers["X-Flags"] = res.body
+    else
+      req.headers["X-Flags"] = "default"
+    end
+    return req
+  end'
+```
+
+The JavaScript equivalent:
+
+```sh
+sarin -U http://example.com/api/items -r 1000 -c 10 \
+  -js 'function transform(req) {
+    try {
+      req.headers["X-Flags"] = http("http://example.com/api/flags").body;
+    } catch (e) {
+      req.headers["X-Flags"] = "default";
+    }
+    return req;
+  }'
+```
