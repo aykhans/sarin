@@ -18,7 +18,8 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-type HostClientGenerator func() *fasthttp.HostClient
+// clientIndexGenerator returns the index of the host client (and proxy) to use next.
+type clientIndexGenerator func() int
 
 func safeUintToInt(u uint) int {
 	if u > math.MaxInt {
@@ -306,18 +307,10 @@ func (c *bufferedConn) Read(b []byte) (int, error) {
 	return c.reader.Read(b)
 }
 
-func NewHostClientGenerator(clients ...*fasthttp.HostClient) HostClientGenerator {
-	switch len(clients) {
-	case 0:
-		hostClient := &fasthttp.HostClient{}
-		return func() *fasthttp.HostClient {
-			return hostClient
-		}
-	case 1:
-		return func() *fasthttp.HostClient {
-			return clients[0]
-		}
-	default:
-		return utilsSlice.RandomCycle(nil, clients...)
+func newClientIndexGenerator(count int) clientIndexGenerator {
+	indexes := make([]int, count)
+	for i := range indexes {
+		indexes[i] = i
 	}
+	return utilsSlice.RandomCycle(nil, indexes...)
 }

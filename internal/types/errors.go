@@ -401,7 +401,87 @@ var (
 	ErrScriptTransformMissing      = errors.New("script must define a global 'transform' function")
 	ErrScriptTransformReturnObject = errors.New("transform function must return an object")
 	ErrScriptURLNoHost             = errors.New("script URL must have a host")
+	ErrScriptHTTPOutsideTransform  = errors.New("http functions can only be called while transform is running")
+	ErrScriptHTTPUnavailable       = errors.New("http client is not available")
+	ErrScriptHTTPMethodEmpty       = errors.New("http method cannot be empty")
+	ErrScriptHTTPURLInvalid        = errors.New("URL must be an absolute http or https URL")
+	ErrScriptHTTPUnknownOption     = errors.New("unknown option")
+	ErrScriptJSONCycle             = errors.New("cannot encode a table that contains itself")
 )
+
+type ScriptTypeError struct {
+	Expected string
+	Got      string
+}
+
+func NewScriptTypeError(expected, got string) ScriptTypeError {
+	return ScriptTypeError{expected, got}
+}
+
+func (e ScriptTypeError) Error() string {
+	return fmt.Sprintf("expected %s, got %s", e.Expected, e.Got)
+}
+
+type ScriptHTTPOptionError struct {
+	Option string
+	Err    error
+}
+
+func NewScriptHTTPOptionError(option string, err error) ScriptHTTPOptionError {
+	if err == nil {
+		err = errNoError
+	}
+	return ScriptHTTPOptionError{option, err}
+}
+
+func (e ScriptHTTPOptionError) Error() string {
+	return fmt.Sprintf("http option %q: %v", e.Option, e.Err)
+}
+
+func (e ScriptHTTPOptionError) Unwrap() error {
+	return e.Err
+}
+
+type ScriptHTTPRequestError struct {
+	Method string
+	URL    string
+	Err    error
+}
+
+func NewScriptHTTPRequestError(method, url string, err error) ScriptHTTPRequestError {
+	if err == nil {
+		err = errNoError
+	}
+	return ScriptHTTPRequestError{method, url, err}
+}
+
+func (e ScriptHTTPRequestError) Error() string {
+	return fmt.Sprintf("http %s %s: %v", e.Method, e.URL, e.Err)
+}
+
+func (e ScriptHTTPRequestError) Unwrap() error {
+	return e.Err
+}
+
+type ScriptJSONError struct {
+	Op  string
+	Err error
+}
+
+func NewScriptJSONError(op string, err error) ScriptJSONError {
+	if err == nil {
+		err = errNoError
+	}
+	return ScriptJSONError{op, err}
+}
+
+func (e ScriptJSONError) Error() string {
+	return fmt.Sprintf("json.%s: %v", e.Op, e.Err)
+}
+
+func (e ScriptJSONError) Unwrap() error {
+	return e.Err
+}
 
 type ScriptLoadError struct {
 	Source string

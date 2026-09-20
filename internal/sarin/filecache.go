@@ -58,8 +58,7 @@ func (fc *FileCache) GetOrLoad(source string) (*CachedFile, error) {
 
 	file := &CachedFile{Content: content, Filename: filename}
 
-	// LoadOrStore handles race condition - if another goroutine
-	// cached it first, we get theirs (no duplicate storage)
+	// If another goroutine cached it first, LoadOrStore returns theirs
 	actual, _ := fc.cache.LoadOrStore(source, file)
 	return actual.(*CachedFile), nil
 }

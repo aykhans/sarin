@@ -97,7 +97,7 @@ func NewDefaultTemplateFuncMap(randSource rand.Source, fileCache *FileCache) tem
 			return string(data), nil
 		},
 		// json_Object builds a JSON object from interleaved key-value pairs and returns it
-		// as a JSON string. Keys must be strings; values may be any JSON-encodable type.
+		// as a JSON string. Keys must be strings, values may be any JSON-encodable type.
 		// Usage: {{ json_Object "name" "Alice" "age" 30 }}
 		"json_Object": func(pairs ...any) (string, error) {
 			if len(pairs)%2 != 0 {
@@ -751,7 +751,7 @@ func NewDefaultBodyTemplateFuncMap(
 
 				switch {
 				case strings.HasPrefix(val, "@@"):
-					// Escaped @ - send as literal string without first @
+					// Escaped @: send the string without the first @
 					if err := writer.WriteField(key, val[1:]); err != nil {
 						return "", err
 					}

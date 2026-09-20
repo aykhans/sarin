@@ -1,0 +1,133 @@
+package sarin
+
+import (
+	"context"
+	"crypto/tls"
+	"net/url"
+	"time"
+
+	"github.com/valyala/fasthttp"
+	"go.aykhans.me/sarin/internal/script"
+	"go.aykhans.me/sarin/internal/types"
+)
+
+// scriptHTTPMaxRedirects is the redirect limit when followRedirects is set.
+const scriptHTTPMaxRedirects = 10
+
+// scriptHTTPDefaultTimeout is the default timeout for script requests, independent of -T.
+const scriptHTTPDefaultTimeout = 30 * time.Second
+
+// scriptHTTPClient sends scripts' http.* requests. It is safe for concurrent use.
+type scriptHTTPClient struct {
+	client         *fasthttp.Client
+	insecureClient *fasthttp.Client
+	defaultTimeout time.Duration
+}
+
+var _ script.HTTPDoer = (*scriptHTTPClient)(nil)
+
+// newScriptHTTPClients creates one client per proxy, in the same order as NewHostClients.
+// It can return the following errors:
+//   - types.ProxyDialError
+func newScriptHTTPClients(ctx context.Context, proxies []url.URL) ([]*scriptHTTPClient, error) {
+	if len(proxies) == 0 {
+		return []*scriptHTTPClient{newScriptHTTPClient(nil, scriptHTTPDefaultTimeout)}, nil
+	}
+
+	clients := make([]*scriptHTTPClient, 0, len(proxies))
+	for _, proxy := range proxies {
+		dialFunc, err := NewProxyDialFunc(ctx, &proxy, scriptHTTPDefaultTimeout)
+		if err != nil {
+			return nil, types.NewProxyDialError(proxy.String(), err)
+		}
+		clients = append(clients, newScriptHTTPClient(dialFunc, scriptHTTPDefaultTimeout))
+	}
+	return clients, nil
+}
+
+func newScriptHTTPClient(dialFunc fasthttp.DialFunc, defaultTimeout time.Duration) *scriptHTTPClient {
+	newClient := func(insecure bool) *fasthttp.Client {
+		return &fasthttp.Client{
+			Dial: dialFunc,
+			TLSConfig: &tls.Config{
+				InsecureSkipVerify: insecure, //nolint:gosec
+			},
+			DisableHeaderNamesNormalizing: true,
+			DisablePathNormalizing:        true,
+			NoDefaultUserAgentHeader:      true,
+		}
+	}
+
+	return &scriptHTTPClient{
+		client:         newClient(false),
+		insecureClient: newClient(true),
+		defaultTimeout: defaultTimeout,
+	}
+}
+
+// Do sends the request. With followRedirects the timeout applies to each hop.
+// It can return the following errors:
+//   - types.ScriptHTTPRequestError
+func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, error) {
+	parsedURL, err := url.Parse(r.URL)
+	if err != nil {
+		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
+	}
+	if (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" {
+		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, types.ErrScriptHTTPURLInvalid)
+	}
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(r.URL)
+	req.Header.SetMethod(r.Method)
+	for key, values := range r.Headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+
+	if len(r.Params) > 0 {
+		args := req.URI().QueryArgs()
+		for key, values := range r.Params {
+			for _, value := range values {
+				args.Add(key, value)
+			}
+		}
+	}
+
+	if len(r.Cookies) > 0 {
+		req.Header.Add("Cookie", cookieHeaderValue(r.Cookies))
+	}
+
+	req.SetBodyString(r.Body)
+
+	timeout := r.Timeout
+	if timeout <= 0 {
+		timeout = c.defaultTimeout
+	}
+
+	client := c.client
+	if r.Insecure {
+		client = c.insecureClient
+	}
+
+	req.SetTimeout(timeout)
+	if r.FollowRedirects {
+		err = client.DoRedirects(req, resp, scriptHTTPMaxRedirects)
+	} else {
+		err = client.Do(req, resp)
+	}
+	if err != nil {
+		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
+	}
+
+	return &script.HTTPResponse{
+		Status:  resp.StatusCode(),
+		Headers: collectRespHeaders(resp),
+		Body:    string(resp.Body()),
+	}, nil
+}

@@ -11,6 +11,10 @@ import (
 type JsEngine struct {
 	runtime   *goja.Runtime
 	transform goja.Callable
+	jsonParse goja.Callable
+	// errorConstructor is the built-in Error, captured before the script can replace it.
+	errorConstructor goja.Value
+	http             httpBridge
 }
 
 // NewJsEngine creates a new JavaScript script engine with the given script content.
@@ -29,11 +33,17 @@ type JsEngine struct {
 //   - types.ScriptExecutionError
 func NewJsEngine(scriptContent string) (*JsEngine, error) {
 	vm := goja.New()
+	engine := &JsEngine{runtime: vm}
+
+	// Register the globals before running the script so its functions can use them
+	if err := engine.registerHTTP(); err != nil {
+		return nil, types.NewScriptExecutionError("JavaScript", err)
+	}
 
 	// Execute the script to define the transform function
 	_, err := vm.RunString(scriptContent)
 	if err != nil {
-		return nil, types.NewScriptExecutionError("JavaScript", err)
+		return nil, types.NewScriptExecutionError("JavaScript", jsExceptionError(err))
 	}
 
 	// Get the transform function
@@ -47,23 +57,30 @@ func NewJsEngine(scriptContent string) (*JsEngine, error) {
 		return nil, types.NewScriptExecutionError("JavaScript", errors.New("'transform' must be a function"))
 	}
 
-	return &JsEngine{
-		runtime:   vm,
-		transform: transform,
-	}, nil
+	engine.transform = transform
+
+	return engine, nil
+}
+
+// SetHTTPDoer sets the doer that the script's http.* calls are sent through.
+func (e *JsEngine) SetHTTPDoer(doer HTTPDoer) {
+	e.http.doer = doer
 }
 
 // Transform executes the JavaScript transform function with the given request data.
 // It can return the following errors:
 //   - types.ScriptExecutionError
 func (e *JsEngine) Transform(req *RequestData) error {
+	e.http.active = true
+	defer func() { e.http.active = false }()
+
 	// Convert RequestData to JavaScript object
 	reqObj := e.requestDataToObject(req)
 
 	// Call transform(req)
 	result, err := e.transform(goja.Undefined(), reqObj)
 	if err != nil {
-		return types.NewScriptExecutionError("JavaScript", err)
+		return types.NewScriptExecutionError("JavaScript", jsExceptionError(err))
 	}
 
 	// Update RequestData from the returned object
@@ -79,6 +96,8 @@ func (e *JsEngine) Close() {
 	// goja doesn't have an explicit close method, but we can help GC
 	e.runtime = nil
 	e.transform = nil
+	e.jsonParse = nil
+	e.errorConstructor = nil
 }
 
 // requestDataToObject converts RequestData to a goja Value (JavaScript object).
@@ -190,9 +209,18 @@ func (e *JsEngine) objectToStringSliceMap(obj *goja.Object) map[string][]string 
 			}
 			result[key] = values
 		} else {
-			// Single value - wrap in slice
+			// Single value, wrap it in a slice
 			result[key] = []string{v.String()}
 		}
 	}
 	return result
+}
+
+// jsExceptionError keeps the thrown value's message without goja's stack frame.
+func jsExceptionError(err error) error {
+	var exception *goja.Exception
+	if !errors.As(err, &exception) {
+		return err
+	}
+	return errors.New(exception.Value().String())
 }

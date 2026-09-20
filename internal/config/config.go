@@ -715,7 +715,7 @@ func validateScriptSource(script string) error {
 		return types.ErrScriptEmpty
 	}
 
-	// Not a file/URL reference - it's an inline script
+	// Not a file/URL reference, so it's an inline script
 	if !strings.HasPrefix(script, "@") {
 		return nil
 	}
@@ -725,7 +725,7 @@ func validateScriptSource(script string) error {
 		return nil
 	}
 
-	// It's a file or URL reference - validate the source
+	// It's a file or URL reference, so validate the source
 	source := script[1:] // Remove the @ prefix
 
 	if source == "" {
@@ -744,7 +744,7 @@ func validateScriptSource(script string) error {
 		return nil
 	}
 
-	// It's a file path - basic validation (not empty, checked above)
+	// It's a file path, already checked to be non-empty above
 	return nil
 }
 
@@ -822,7 +822,7 @@ func (m printConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m printConfigModel) View() tea.View {
-	// AltScreen and MouseMode were program options in bubbletea v1; in v2 they
+	// AltScreen and MouseMode were program options in bubbletea v1, in v2 they
 	// are view properties, so every return path has to declare them.
 	newView := func(s string) tea.View {
 		v := tea.NewView(s)

@@ -31,6 +31,9 @@ type Engine interface {
 	// The script should modify the RequestData and return it.
 	Transform(req *RequestData) error
 
+	// SetHTTPDoer sets the doer that the script's http.* calls are sent through.
+	SetHTTPDoer(doer HTTPDoer)
+
 	// Close releases any resources held by the engine.
 	Close()
 }
@@ -69,7 +72,7 @@ func LoadSource(ctx context.Context, source string, engineType EngineType) (*Sou
 
 	switch {
 	case strings.HasPrefix(source, "@@"):
-		// Escaped @ - it's an inline script starting with literal @
+		// Escaped @: an inline script starting with a literal @
 		content = source[1:] // Remove first @, keep the rest
 	case strings.HasPrefix(source, "@"):
 		// File or URL reference
@@ -125,7 +128,7 @@ func ValidateScript(ctx context.Context, source string, engineType EngineType) e
 		return err
 	}
 
-	// Try to create an engine - this validates syntax and transform function
+	// Creating an engine validates the syntax and the transform function
 	var engine Engine
 	switch engineType {
 	case EngineTypeLua:
@@ -140,7 +143,7 @@ func ValidateScript(ctx context.Context, source string, engineType EngineType) e
 		return err
 	}
 
-	// Clean up the engine - we only needed it for validation
+	// The engine was only needed for validation
 	engine.Close()
 	return nil
 }
