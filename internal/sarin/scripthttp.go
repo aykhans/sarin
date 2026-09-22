@@ -26,9 +26,9 @@ var _ script.HTTPDoer = (*scriptHTTPClient)(nil)
 // newScriptHTTPClients creates one client per proxy, in the same order as NewHostClients.
 // It can return the following errors:
 //   - types.ProxyDialError
-func newScriptHTTPClients(ctx context.Context, proxies []url.URL) ([]*scriptHTTPClient, error) {
+func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint) ([]*scriptHTTPClient, error) {
 	if len(proxies) == 0 {
-		return []*scriptHTTPClient{newScriptHTTPClient(nil, scriptHTTPDefaultTimeout)}, nil
+		return []*scriptHTTPClient{newScriptHTTPClient(nil, scriptHTTPDefaultTimeout, maxConns)}, nil
 	}
 
 	clients := make([]*scriptHTTPClient, 0, len(proxies))
@@ -37,15 +37,16 @@ func newScriptHTTPClients(ctx context.Context, proxies []url.URL) ([]*scriptHTTP
 		if err != nil {
 			return nil, types.NewProxyDialError(proxy.String(), err)
 		}
-		clients = append(clients, newScriptHTTPClient(dialFunc, scriptHTTPDefaultTimeout))
+		clients = append(clients, newScriptHTTPClient(dialFunc, scriptHTTPDefaultTimeout, maxConns))
 	}
 	return clients, nil
 }
 
-func newScriptHTTPClient(dialFunc fasthttp.DialFunc, defaultTimeout time.Duration) *scriptHTTPClient {
+func newScriptHTTPClient(dialFunc fasthttp.DialFunc, defaultTimeout time.Duration, maxConns uint) *scriptHTTPClient {
 	newClient := func(insecure bool) *fasthttp.Client {
 		return &fasthttp.Client{
-			Dial: dialFunc,
+			Dial:            dialFunc,
+			MaxConnsPerHost: safeUintToInt(maxConns),
 			TLSConfig: &tls.Config{
 				InsecureSkipVerify: insecure, //nolint:gosec
 			},
