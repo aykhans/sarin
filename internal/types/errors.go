@@ -318,6 +318,8 @@ func (e ConfigFileReadError) Unwrap() error {
 
 // ======================================== Proxy ========================================
 
+var ErrProxyNoContextDialer = errors.New("SOCKS5 dialer does not support timeouts")
+
 type ProxyUnsupportedSchemeError struct {
 	Scheme string
 }

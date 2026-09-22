@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttpproxy"
 	"go.aykhans.me/sarin/internal/types"
 	utilsSlice "go.aykhans.me/utils/slice"
 	"golang.org/x/net/proxy"
@@ -95,40 +94,45 @@ func NewHostClients(
 	return []*fasthttp.HostClient{client}, nil
 }
 
-// NewProxyDialFunc creates a dial function for the given proxy URL.
+// NewProxyDialFunc creates a dial function for the given proxy URL with a fixed timeout.
 // It can return the following errors:
 //   - types.ProxyUnsupportedSchemeError
+//   - types.ErrProxyNoContextDialer
 func NewProxyDialFunc(ctx context.Context, proxyURL *url.URL, timeout time.Duration) (fasthttp.DialFunc, error) {
-	var (
-		dialer fasthttp.DialFunc
-		err    error
-	)
+	dial, err := NewProxyDialFuncWithTimeout(ctx, proxyURL)
+	if err != nil {
+		return nil, err
+	}
 
+	return func(addr string) (net.Conn, error) {
+		return dial(addr, timeout)
+	}, nil
+}
+
+// NewProxyDialFuncWithTimeout creates a dial function for the given proxy URL that takes the timeout per call.
+// It can return the following errors:
+//   - types.ProxyUnsupportedSchemeError
+//   - types.ErrProxyNoContextDialer
+func NewProxyDialFuncWithTimeout(ctx context.Context, proxyURL *url.URL) (fasthttp.DialFuncWithTimeout, error) {
 	switch proxyURL.Scheme {
 	case "socks5":
-		dialer, err = fasthttpSocksDialerDualStackTimeout(ctx, proxyURL, timeout, true)
-		if err != nil {
-			return nil, err
-		}
+		return fasthttpSocksDialer(ctx, proxyURL, true)
 	case "socks5h":
-		dialer, err = fasthttpSocksDialerDualStackTimeout(ctx, proxyURL, timeout, false)
-		if err != nil {
-			return nil, err
-		}
+		return fasthttpSocksDialer(ctx, proxyURL, false)
 	case "http":
-		dialer = fasthttpproxy.FasthttpHTTPDialerDualStackTimeout(proxyURL.String(), timeout)
+		return fasthttpConnectDialer(proxyURL, false), nil
 	case "https":
-		dialer = fasthttpHTTPSDialerDualStackTimeout(proxyURL, timeout)
+		return fasthttpConnectDialer(proxyURL, true), nil
 	default:
 		return nil, types.NewProxyUnsupportedSchemeError(proxyURL.Scheme)
 	}
-
-	return dialer, nil
 }
 
-// The returned dial function can return the following errors:
+// fasthttpSocksDialer creates a SOCKS5 dial function that takes the timeout per call.
+// It can return the following errors:
+//   - types.ErrProxyNoContextDialer
 //   - types.ProxyDialError
-func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL, timeout time.Duration, resolveLocally bool) (fasthttp.DialFunc, error) {
+func fasthttpSocksDialer(ctx context.Context, proxyURL *url.URL, resolveLocally bool) (fasthttp.DialFuncWithTimeout, error) {
 	netDialer := &net.Dialer{}
 
 	// Parse auth from proxy URL if present
@@ -150,21 +154,14 @@ func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL,
 
 	proxyStr := proxyURL.String()
 
-	// Assert to ContextDialer for timeout support
+	// Timeouts need DialContext, which proxy.SOCKS5 always provides with a net.Dialer.
 	contextDialer, ok := socksDialer.(proxy.ContextDialer)
 	if !ok {
-		// Fallback without timeout (should not happen with net.Dialer)
-		return func(addr string) (net.Conn, error) {
-			conn, err := socksDialer.Dial("tcp", addr)
-			if err != nil {
-				return nil, types.NewProxyDialError(proxyStr, err)
-			}
-			return conn, nil
-		}, nil
+		return nil, types.ErrProxyNoContextDialer
 	}
 
 	// Return dial function that uses context with timeout
-	return func(addr string) (net.Conn, error) {
+	return func(addr string, timeout time.Duration) (net.Conn, error) {
 		deadline := time.Now().Add(timeout)
 
 		if resolveLocally {
@@ -204,12 +201,20 @@ func fasthttpSocksDialerDualStackTimeout(ctx context.Context, proxyURL *url.URL,
 	}, nil
 }
 
+// fasthttpConnectDialer creates a dial function that tunnels through an HTTP proxy with CONNECT,
+// reaching the proxy over TLS when useTLS is set.
+//
 // The returned dial function can return the following errors:
 //   - types.ProxyDialError
-func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duration) fasthttp.DialFunc {
+func fasthttpConnectDialer(proxyURL *url.URL, useTLS bool) fasthttp.DialFuncWithTimeout {
+	defaultPort := "80"
+	if useTLS {
+		defaultPort = "443"
+	}
+
 	proxyAddr := proxyURL.Host
 	if proxyURL.Port() == "" {
-		proxyAddr = net.JoinHostPort(proxyURL.Hostname(), "443")
+		proxyAddr = net.JoinHostPort(proxyURL.Hostname(), defaultPort)
 	}
 
 	// Build Proxy-Authorization header if auth is present
@@ -223,7 +228,7 @@ func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duratio
 
 	proxyStr := proxyURL.String()
 
-	return func(addr string) (net.Conn, error) {
+	return func(addr string, timeout time.Duration) (net.Conn, error) {
 		// Establish TCP connection to proxy with timeout
 		start := time.Now()
 		conn, err := fasthttp.DialDualStackTimeout(proxyAddr, timeout)
@@ -243,13 +248,15 @@ func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duratio
 			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 
-		// Upgrade to TLS
-		tlsConn := tls.Client(conn, &tls.Config{
-			ServerName: proxyURL.Hostname(),
-		})
-		if err := tlsConn.Handshake(); err != nil {
-			tlsConn.Close() //nolint:errcheck,gosec
-			return nil, types.NewProxyDialError(proxyStr, err)
+		if useTLS {
+			tlsConn := tls.Client(conn, &tls.Config{
+				ServerName: proxyURL.Hostname(),
+			})
+			if err := tlsConn.Handshake(); err != nil {
+				tlsConn.Close() //nolint:errcheck,gosec
+				return nil, types.NewProxyDialError(proxyStr, err)
+			}
+			conn = tlsConn
 		}
 
 		// Build and send CONNECT request
@@ -263,35 +270,35 @@ func fasthttpHTTPSDialerDualStackTimeout(proxyURL *url.URL, timeout time.Duratio
 			connectReq.Header.Set("Proxy-Authorization", proxyAuth)
 		}
 
-		if err := connectReq.Write(tlsConn); err != nil {
-			tlsConn.Close() //nolint:errcheck,gosec
+		if err := connectReq.Write(conn); err != nil {
+			conn.Close() //nolint:errcheck,gosec
 			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 
 		// Read response using buffered reader, but return wrapped connection
 		// to preserve any buffered data
-		bufReader := bufio.NewReader(tlsConn)
+		bufReader := bufio.NewReader(conn)
 		resp, err := http.ReadResponse(bufReader, connectReq)
 		if err != nil {
-			tlsConn.Close() //nolint:errcheck,gosec
+			conn.Close() //nolint:errcheck,gosec
 			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 		resp.Body.Close() //nolint:errcheck,gosec
 
 		if resp.StatusCode != http.StatusOK {
-			tlsConn.Close() //nolint:errcheck,gosec
+			conn.Close() //nolint:errcheck,gosec
 			return nil, types.NewProxyDialError(proxyStr, types.NewProxyConnectError(resp.Status))
 		}
 
 		// Clear deadline for the tunneled connection
-		if err := tlsConn.SetDeadline(time.Time{}); err != nil {
-			tlsConn.Close() //nolint:errcheck,gosec
+		if err := conn.SetDeadline(time.Time{}); err != nil {
+			conn.Close() //nolint:errcheck,gosec
 			return nil, types.NewProxyDialError(proxyStr, err)
 		}
 
 		// Return wrapped connection that uses the buffered reader
 		// to avoid losing any data that was read ahead
-		return &bufferedConn{Conn: tlsConn, reader: bufReader}, nil
+		return &bufferedConn{Conn: conn, reader: bufReader}, nil
 	}
 }
 

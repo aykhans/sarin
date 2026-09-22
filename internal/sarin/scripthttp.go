@@ -3,6 +3,7 @@ package sarin
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"net/url"
 	"time"
 
@@ -28,24 +29,26 @@ var _ script.HTTPDoer = (*scriptHTTPClient)(nil)
 //   - types.ProxyDialError
 func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint) ([]*scriptHTTPClient, error) {
 	if len(proxies) == 0 {
-		return []*scriptHTTPClient{newScriptHTTPClient(nil, scriptHTTPDefaultTimeout, maxConns)}, nil
+		return []*scriptHTTPClient{newScriptHTTPClient(fasthttp.DialTimeout, scriptHTTPDefaultTimeout, maxConns)}, nil
 	}
 
 	clients := make([]*scriptHTTPClient, 0, len(proxies))
 	for _, proxy := range proxies {
-		dialFunc, err := NewProxyDialFunc(ctx, &proxy, scriptHTTPDefaultTimeout)
+		dial, err := NewProxyDialFuncWithTimeout(ctx, &proxy)
 		if err != nil {
 			return nil, types.NewProxyDialError(proxy.String(), err)
 		}
-		clients = append(clients, newScriptHTTPClient(dialFunc, scriptHTTPDefaultTimeout, maxConns))
+		clients = append(clients, newScriptHTTPClient(dial, scriptHTTPDefaultTimeout, maxConns))
 	}
 	return clients, nil
 }
 
-func newScriptHTTPClient(dialFunc fasthttp.DialFunc, defaultTimeout time.Duration, maxConns uint) *scriptHTTPClient {
+func newScriptHTTPClient(dial fasthttp.DialFuncWithTimeout, defaultTimeout time.Duration, maxConns uint) *scriptHTTPClient {
 	newClient := func(insecure bool) *fasthttp.Client {
+		// Read and write timeouts stay unset because they would cap the per-call timeout,
+		// so dialWithDeadline is what bounds the TLS handshake.
 		return &fasthttp.Client{
-			Dial:            dialFunc,
+			DialTimeout:     dialWithDeadline(dial),
 			MaxConnsPerHost: safeUintToInt(maxConns),
 			TLSConfig: &tls.Config{
 				InsecureSkipVerify: insecure, //nolint:gosec
@@ -60,6 +63,27 @@ func newScriptHTTPClient(dialFunc fasthttp.DialFunc, defaultTimeout time.Duratio
 		client:         newClient(false),
 		insecureClient: newClient(true),
 		defaultTimeout: defaultTimeout,
+	}
+}
+
+// dialWithDeadline dials within the request timeout and keeps it as the connection deadline,
+// so the TLS handshake fasthttp runs on the first write cannot outlive the request.
+func dialWithDeadline(dial fasthttp.DialFuncWithTimeout) fasthttp.DialFuncWithTimeout {
+	return func(addr string, timeout time.Duration) (net.Conn, error) {
+		if timeout <= 0 {
+			timeout = scriptHTTPDefaultTimeout
+		}
+		deadline := time.Now().Add(timeout)
+
+		conn, err := dial(addr, timeout)
+		if err != nil {
+			return nil, err
+		}
+		if err := conn.SetDeadline(deadline); err != nil {
+			conn.Close() //nolint:errcheck,gosec
+			return nil, err
+		}
+		return conn, nil
 	}
 }
 
