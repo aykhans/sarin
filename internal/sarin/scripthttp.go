@@ -29,7 +29,7 @@ var _ script.HTTPDoer = (*scriptHTTPClient)(nil)
 //   - types.ProxyDialError
 func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint) ([]*scriptHTTPClient, error) {
 	if len(proxies) == 0 {
-		return []*scriptHTTPClient{newScriptHTTPClient(fasthttp.DialTimeout, scriptHTTPDefaultTimeout, maxConns)}, nil
+		return []*scriptHTTPClient{newScriptHTTPClient(fasthttp.DialDualStackTimeout, scriptHTTPDefaultTimeout, maxConns)}, nil
 	}
 
 	clients := make([]*scriptHTTPClient, 0, len(proxies))

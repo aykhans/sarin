@@ -77,8 +77,9 @@ func NewHostClients(
 	}
 
 	client := &fasthttp.HostClient{
-		MaxConns: safeUintToInt(maxConns),
-		IsTLS:    isTLS,
+		MaxConns:      safeUintToInt(maxConns),
+		IsTLS:         isTLS,
+		DialDualStack: true,
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: skipVerify, //nolint:gosec
 		},
@@ -164,41 +165,66 @@ func fasthttpSocksDialer(ctx context.Context, proxyURL *url.URL, resolveLocally 
 	return func(addr string, timeout time.Duration) (net.Conn, error) {
 		deadline := time.Now().Add(timeout)
 
+		addrs := []string{addr}
 		if resolveLocally {
-			host, port, err := net.SplitHostPort(addr)
+			var err error
+			addrs, err = resolveIPv4First(ctx, addr, timeout)
 			if err != nil {
 				return nil, types.NewProxyDialError(proxyStr, err)
 			}
+		}
 
-			dnsCtx, dnsCancel := context.WithTimeout(ctx, timeout)
-			ips, err := net.DefaultResolver.LookupIP(dnsCtx, "ip", host)
-			dnsCancel()
-			if err != nil {
-				return nil, types.NewProxyDialError(proxyStr, err)
+		// Try every resolved address, so one unreachable family does not fail the dial.
+		var lastErr error
+		for _, candidate := range addrs {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return nil, types.NewProxyDialError(proxyStr, context.DeadlineExceeded)
 			}
-			if len(ips) == 0 {
-				return nil, types.NewProxyDialError(proxyStr, types.NewProxyResolveError(host))
+
+			dialCtx, dialCancel := context.WithTimeout(ctx, remaining)
+			conn, err := contextDialer.DialContext(dialCtx, "tcp", candidate)
+			dialCancel()
+			if err == nil {
+				return conn, nil
 			}
-
-			// Use the first resolved IP
-			addr = net.JoinHostPort(ips[0].String(), port)
+			lastErr = err
 		}
-
-		// Use remaining time for dial
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return nil, types.NewProxyDialError(proxyStr, context.DeadlineExceeded)
-		}
-
-		dialCtx, dialCancel := context.WithTimeout(ctx, remaining)
-		defer dialCancel()
-
-		conn, err := contextDialer.DialContext(dialCtx, "tcp", addr)
-		if err != nil {
-			return nil, types.NewProxyDialError(proxyStr, err)
-		}
-		return conn, nil
+		return nil, types.NewProxyDialError(proxyStr, lastErr)
 	}, nil
+}
+
+// resolveIPv4First resolves the host of addr into candidate addresses, IPv4 ones first.
+// It can return the following errors:
+//   - types.ProxyResolveError
+func resolveIPv4First(ctx context.Context, addr string, timeout time.Duration) ([]string, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsCtx, dnsCancel := context.WithTimeout(ctx, timeout)
+	ips, err := net.DefaultResolver.LookupIP(dnsCtx, "ip", host)
+	dnsCancel()
+	if err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 {
+		return nil, types.NewProxyResolveError(host)
+	}
+
+	addrs := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			addrs = append(addrs, net.JoinHostPort(ip.String(), port))
+		}
+	}
+	for _, ip := range ips {
+		if ip.To4() == nil {
+			addrs = append(addrs, net.JoinHostPort(ip.String(), port))
+		}
+	}
+	return addrs, nil
 }
 
 // fasthttpConnectDialer creates a dial function that tunnels through an HTTP proxy with CONNECT,
