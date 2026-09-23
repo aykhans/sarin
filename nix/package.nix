@@ -12,7 +12,7 @@
 
   src = lib.cleanSource ../.;
 
-  vendorHash = "sha256-KUxzFDxYbKvKASMze+f7jxfpCQbs01ezeG6a1VboHxw=";
+  vendorHash = "sha256-R5g79goG/VpSlH+hpvStUGIl+VWwmo7DTCO3j4rT0CU=";
 
   subPackages = [ "cmd/cli" ];
 
