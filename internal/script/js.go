@@ -43,7 +43,7 @@ func NewJsEngine(scriptContent string) (*JsEngine, error) {
 	// Execute the script to define the transform function
 	_, err := vm.RunString(scriptContent)
 	if err != nil {
-		return nil, types.NewScriptExecutionError("JavaScript", jsExceptionError(err))
+		return nil, types.NewScriptExecutionError("JavaScript", engine.exceptionError(err))
 	}
 
 	// Get the transform function
@@ -80,7 +80,7 @@ func (e *JsEngine) Transform(req *RequestData) error {
 	// Call transform(req)
 	result, err := e.transform(goja.Undefined(), reqObj)
 	if err != nil {
-		return types.NewScriptExecutionError("JavaScript", jsExceptionError(err))
+		return types.NewScriptExecutionError("JavaScript", e.exceptionError(err))
 	}
 
 	// Update RequestData from the returned object
@@ -216,11 +216,18 @@ func (e *JsEngine) objectToStringSliceMap(obj *goja.Object) map[string][]string 
 	return result
 }
 
-// jsExceptionError keeps the thrown value's message without goja's stack frame.
-func jsExceptionError(err error) error {
+// exceptionError keeps the thrown value's message without goja's stack frame.
+// Stringifying runs through Runtime.Try because a thrown value with no usable
+// toString makes goja panic outside its own execution context.
+func (e *JsEngine) exceptionError(err error) error {
 	var exception *goja.Exception
 	if !errors.As(err, &exception) {
 		return err
 	}
-	return errors.New(exception.Value().String())
+
+	var message string
+	if thrown := e.runtime.Try(func() { message = exception.Value().String() }); thrown != nil {
+		message = "unprintable thrown value"
+	}
+	return errors.New(message)
 }
