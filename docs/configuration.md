@@ -582,7 +582,7 @@ http(url, opts)
 | `body`         | string                      | `""`    | Request body                                                                                           |
 | `timeout`      | duration string (`"500ms"`) | `30s`   | Request timeout (the `timeout` config does not apply), applied to each hop when redirects are followed |
 | `insecure`     | boolean                     | `false` | Skip TLS verification (the `insecure` config does not apply)                                           |
-| `maxRedirects` | number                      | `0`     | How many redirects to follow, `0` follows none                                                         |
+| `maxRedirects` | number                      | `0`     | How many redirects to follow, `0` follows none, maximum 100                                            |
 
 Unknown options and values of the wrong type raise an error.
 

@@ -63,6 +63,9 @@ type HTTPDoer interface {
 // httpDefaultMethod is used when the options set no method.
 const httpDefaultMethod = http.MethodGet
 
+// httpMaxRedirectsLimit is the highest maxRedirects a script may ask for.
+const httpMaxRedirectsLimit = 100
+
 // Option keys accepted by the http function.
 const (
 	httpOptionMethod       = "method"
@@ -103,10 +106,13 @@ func (b *httpBridge) do(req *HTTPRequest) (*HTTPResponse, error) {
 // It can return the following errors:
 //   - types.ScriptHTTPOptionError
 func parseHTTPMaxRedirects(count float64) (int, error) {
-	if count < 0 || count != math.Trunc(count) {
+	if math.IsNaN(count) || count < 0 || count > httpMaxRedirectsLimit || count != math.Trunc(count) {
 		return 0, types.NewScriptHTTPOptionError(
 			httpOptionMaxRedirects,
-			types.NewScriptTypeError("a whole number of 0 or more", strconv.FormatFloat(count, 'f', -1, 64)),
+			types.NewScriptTypeError(
+				"a whole number between 0 and "+strconv.Itoa(httpMaxRedirectsLimit),
+				strconv.FormatFloat(count, 'g', -1, 64),
+			),
 		)
 	}
 	return int(count), nil
