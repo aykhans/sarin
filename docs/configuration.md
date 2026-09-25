@@ -456,7 +456,7 @@ function transform(req)
 end
 ```
 
-> **Note:** Header, parameter, and cookie values can be a single string or a table (array) for multiple values per key (e.g. `{"val1", "val2"}`).
+> **Note:** Header, parameter, and cookie values can be a single string or a table (array) for multiple values per key (e.g. `{"val1", "val2"}`). Numbers and booleans are converted to text, other values are skipped.
 
 > **Note:** Lua scripts can send their own HTTP requests with `http` and work with JSON through the global `json` table. See [HTTP Requests in Scripts](#http-requests-in-scripts).
 
@@ -523,7 +523,7 @@ function transform(req) {
 }
 ```
 
-> **Note:** Header, parameter, and cookie values can be a single string or an array for multiple values per key (e.g. `["val1", "val2"]`).
+> **Note:** Header, parameter, and cookie values can be a single string or an array for multiple values per key (e.g. `["val1", "val2"]`). Numbers and booleans are converted to text, other values are skipped.
 
 > **Note:** JavaScript scripts can send their own HTTP requests with `http`. See [HTTP Requests in Scripts](#http-requests-in-scripts).
 

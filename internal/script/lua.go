@@ -168,20 +168,33 @@ func (e *LuaEngine) tableToStringSliceMap(t *lua.LTable) map[string][]string {
 		}
 		key := string(k.(lua.LString))
 
-		switch v.Type() {
-		case lua.LTString:
-			// Single string value
-			result[key] = []string{string(v.(lua.LString))}
-		case lua.LTTable:
-			// Array of strings
-			var values []string
-			v.(*lua.LTable).ForEach(func(_, item lua.LValue) {
-				if item.Type() == lua.LTString {
-					values = append(values, string(item.(lua.LString)))
+		if v.Type() == lua.LTTable {
+			// Array of values, keys outside 1..n are skipped
+			arr := v.(*lua.LTable)
+			length := arr.Len()
+			values := make([]string, 0, length)
+			for i := 1; i <= length; i++ {
+				if text, ok := luaScalarString(arr.RawGetInt(i)); ok {
+					values = append(values, text)
 				}
-			})
+			}
 			result[key] = values
+			return
+		}
+
+		if text, ok := luaScalarString(v); ok {
+			result[key] = []string{text}
 		}
 	})
 	return result
+}
+
+// luaScalarString renders strings, numbers and booleans as text.
+func luaScalarString(v lua.LValue) (string, bool) {
+	switch v.Type() {
+	case lua.LTString, lua.LTNumber, lua.LTBool:
+		return v.String(), true
+	default:
+		return "", false
+	}
 }

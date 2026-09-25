@@ -2,6 +2,7 @@ package script
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/dop251/goja"
 	"go.aykhans.me/sarin/internal/types"
@@ -195,22 +196,23 @@ func (e *JsEngine) objectToStringSliceMap(obj *goja.Object) map[string][]string 
 	result := make(map[string][]string)
 	for _, key := range obj.Keys() {
 		v := obj.Get(key)
-		if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
-			continue
-		}
 
 		// Check if it's an array
-		if arr, ok := v.Export().([]any); ok {
-			var values []string
-			for _, item := range arr {
-				if s, ok := item.(string); ok {
-					values = append(values, s)
+		if arr, ok := v.(*goja.Object); ok && arr.ClassName() == "Array" {
+			length := int(arr.Get("length").ToInteger())
+			values := make([]string, 0, length)
+			for i := range length {
+				if text, ok := jsStringValue(arr.Get(strconv.Itoa(i))); ok {
+					values = append(values, text)
 				}
 			}
 			result[key] = values
-		} else {
-			// Single value, wrap it in a slice
-			result[key] = []string{v.String()}
+			continue
+		}
+
+		// Single value, wrap it in a slice
+		if text, ok := jsStringValue(v); ok {
+			result[key] = []string{text}
 		}
 	}
 	return result
@@ -230,4 +232,16 @@ func (e *JsEngine) exceptionError(err error) error {
 		message = "unprintable thrown value"
 	}
 	return errors.New(message)
+}
+
+// jsStringValue renders a JavaScript primitive the way the script would see it.
+// Objects, arrays and functions have no useful text form, so they are skipped.
+func jsStringValue(v goja.Value) (string, bool) {
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return "", false
+	}
+	if _, isObject := v.(*goja.Object); isObject {
+		return "", false
+	}
+	return v.String(), true
 }
