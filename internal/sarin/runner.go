@@ -199,6 +199,10 @@ type sarin struct {
 	logError       bool
 	logFile        string
 
+	// jobsCtx ends the run, either when the duration expires or on Ctrl+C.
+	jobsCtx    context.Context //nolint:containedctx
+	jobsCancel context.CancelFunc
+
 	hostClients       []*fasthttp.HostClient
 	scriptHTTPClients []*scriptHTTPClient
 	responses         *SarinResponseData
@@ -272,15 +276,20 @@ func NewSarin(
 
 	scriptChain := script.NewChain(luaSources, jsSources)
 
+	jobsCtx, jobsCancel := context.WithCancel(ctx)
+
 	var scriptHTTPClients []*scriptHTTPClient
 	if !scriptChain.IsEmpty() {
-		scriptHTTPClients, err = newScriptHTTPClients(ctx, proxyURLs, workers)
+		scriptHTTPClients, err = newScriptHTTPClients(jobsCtx, proxyURLs, workers)
 		if err != nil {
+			jobsCancel()
 			return nil, err
 		}
 	}
 
 	srn := &sarin{
+		jobsCtx:           jobsCtx,
+		jobsCancel:        jobsCancel,
 		workers:           workers,
 		requestURL:        requestURL,
 		methods:           methods,
@@ -316,9 +325,7 @@ func (s sarin) GetResponses() *SarinResponseData {
 	return s.responses
 }
 
-func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
-	jobsCtx, jobsCancel := context.WithCancel(ctx)
-
+func (s sarin) Start(stopCtrl *StopController) {
 	var workersWG sync.WaitGroup
 	jobsCh := make(chan struct{}, max(s.workers, 1))
 
@@ -382,15 +389,14 @@ func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
 	s.startWorkers(&workersWG, jobsCh, &counter, sendLog, sendRespLog)
 
 	if runTUI {
-		//nolint:contextcheck // streamCtx must remain active until all workers complete to ensure all collected data is streamed
 		go s.streamProgress(streamCtx, stopCtrl, streamCh, totalRequests, &counter, tuiLogChannel, showProgressBar)
 	}
 
 	// Setup duration-based cancellation
-	s.setupDurationTimeout(ctx, jobsCancel)
+	s.setupDurationTimeout()
 	// Distribute jobs to workers.
 	// This blocks until all jobs are sent or the context is canceled.
-	s.sendJobs(jobsCtx, jobsCh)
+	s.sendJobs(jobsCh)
 
 	// Close the jobs channel so workers stop after completing their current job
 	close(jobsCh)
@@ -455,31 +461,31 @@ func (s sarin) startWorkers(wg *sync.WaitGroup, jobs <-chan struct{}, counter *a
 	}
 }
 
-func (s sarin) setupDurationTimeout(ctx context.Context, cancel context.CancelFunc) {
+func (s sarin) setupDurationTimeout() {
 	if s.totalDuration != nil {
 		go func() {
 			timer := time.NewTimer(*s.totalDuration)
 			defer timer.Stop()
 			select {
 			case <-timer.C:
-				cancel()
-			case <-ctx.Done():
+				s.jobsCancel()
+			case <-s.jobsCtx.Done():
 				// Context cancelled, cleanup
 			}
 		}()
 	}
 }
 
-func (s sarin) sendJobs(ctx context.Context, jobs chan<- struct{}) {
+func (s sarin) sendJobs(jobs chan<- struct{}) {
 	if s.totalRequests != nil && *s.totalRequests > 0 {
 		for range *s.totalRequests {
-			if ctx.Err() != nil {
+			if s.jobsCtx.Err() != nil {
 				break
 			}
 			jobs <- struct{}{}
 		}
 	} else {
-		for ctx.Err() == nil {
+		for s.jobsCtx.Err() == nil {
 			jobs <- struct{}{}
 		}
 	}

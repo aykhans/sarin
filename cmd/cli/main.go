@@ -75,7 +75,7 @@ func main() {
 		}),
 	)
 
-	srn.Start(ctx, stopCtrl)
+	srn.Start(stopCtrl)
 
 	switch *combinedConfig.Output {
 	case config.ConfigOutputTypeNone:

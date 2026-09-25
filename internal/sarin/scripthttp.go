@@ -17,6 +17,7 @@ const scriptHTTPDefaultTimeout = 30 * time.Second
 
 // scriptHTTPClient sends scripts' http.* requests. It is safe for concurrent use.
 type scriptHTTPClient struct {
+	ctx            context.Context //nolint:containedctx
 	client         *fasthttp.Client
 	insecureClient *fasthttp.Client
 	defaultTimeout time.Duration
@@ -29,7 +30,7 @@ var _ script.HTTPDoer = (*scriptHTTPClient)(nil)
 //   - types.ProxyDialError
 func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint) ([]*scriptHTTPClient, error) {
 	if len(proxies) == 0 {
-		return []*scriptHTTPClient{newScriptHTTPClient(fasthttp.DialDualStackTimeout, scriptHTTPDefaultTimeout, maxConns)}, nil
+		return []*scriptHTTPClient{newScriptHTTPClient(ctx, fasthttp.DialDualStackTimeout, scriptHTTPDefaultTimeout, maxConns)}, nil
 	}
 
 	clients := make([]*scriptHTTPClient, 0, len(proxies))
@@ -38,12 +39,12 @@ func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint)
 		if err != nil {
 			return nil, types.NewProxyDialError(proxy.String(), err)
 		}
-		clients = append(clients, newScriptHTTPClient(dial, scriptHTTPDefaultTimeout, maxConns))
+		clients = append(clients, newScriptHTTPClient(ctx, dial, scriptHTTPDefaultTimeout, maxConns))
 	}
 	return clients, nil
 }
 
-func newScriptHTTPClient(dial fasthttp.DialFuncWithTimeout, defaultTimeout time.Duration, maxConns uint) *scriptHTTPClient {
+func newScriptHTTPClient(ctx context.Context, dial fasthttp.DialFuncWithTimeout, defaultTimeout time.Duration, maxConns uint) *scriptHTTPClient {
 	newClient := func(insecure bool) *fasthttp.Client {
 		// Read and write timeouts stay unset because they would cap the per-call timeout,
 		// so dialWithDeadline is what bounds the TLS handshake.
@@ -60,6 +61,7 @@ func newScriptHTTPClient(dial fasthttp.DialFuncWithTimeout, defaultTimeout time.
 	}
 
 	return &scriptHTTPClient{
+		ctx:            ctx,
 		client:         newClient(false),
 		insecureClient: newClient(true),
 		defaultTimeout: defaultTimeout,
@@ -91,6 +93,10 @@ func dialWithDeadline(dial fasthttp.DialFuncWithTimeout) fasthttp.DialFuncWithTi
 // It can return the following errors:
 //   - types.ScriptHTTPRequestError
 func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, error) {
+	if err := c.ctx.Err(); err != nil {
+		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
+	}
+
 	parsedURL, err := url.Parse(r.URL)
 	if err != nil {
 		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
