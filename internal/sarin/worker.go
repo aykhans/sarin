@@ -1,12 +1,14 @@
 package sarin
 
 import (
+	"errors"
 	"strconv"
 	"sync/atomic"
 	"time"
 
 	"github.com/valyala/fasthttp"
 	"go.aykhans.me/sarin/internal/script"
+	"go.aykhans.me/sarin/internal/types"
 )
 
 const dryRunResponseKey = "dry-run"
@@ -27,6 +29,16 @@ func statusCodeToString(code int) string {
 		return statusCodeStrings[i]
 	}
 	return strconv.Itoa(code)
+}
+
+// requestErrorKey keys a generation failure by its source instead of its message.
+// A script picks its own URLs and error texts, so the message would mint a new
+// stats entry per request. The full message still goes to the runtime log.
+func requestErrorKey(err error) string {
+	if chainErr, ok := errors.AsType[types.ScriptChainError](err); ok {
+		return chainErr.EngineType + " script[" + strconv.Itoa(chainErr.Index) + "] error"
+	}
+	return "request generation error"
 }
 
 func (s sarin) Worker(
@@ -112,7 +124,7 @@ func (s sarin) workerStatsWithDynamic(
 		clientIndex := nextClientIndex()
 		bindScriptProxy(clientIndex)
 		if err := requestGenerator(req); err != nil {
-			s.responses.Add(err.Error(), 0)
+			s.responses.Add(requestErrorKey(err), 0)
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 			continue
@@ -144,8 +156,9 @@ func (s sarin) workerStatsWithStatic(
 ) {
 	if err := requestGenerator(req); err != nil {
 		// Static request generation failed, so record all jobs as errors
+		errorKey := requestErrorKey(err)
 		for range jobs {
-			s.responses.Add(err.Error(), 0)
+			s.responses.Add(errorKey, 0)
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 		}
@@ -241,7 +254,7 @@ func (s sarin) workerDryRunStatsWithDynamic(
 		bindScriptProxy(nextClientIndex())
 		startTime := time.Now()
 		if err := requestGenerator(req); err != nil {
-			s.responses.Add(err.Error(), time.Since(startTime))
+			s.responses.Add(requestErrorKey(err), time.Since(startTime))
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 			continue
@@ -260,8 +273,9 @@ func (s sarin) workerDryRunStatsWithStatic(
 ) {
 	if err := requestGenerator(req); err != nil {
 		// Static request generation failed, so record all jobs as errors
+		errorKey := requestErrorKey(err)
 		for range jobs {
-			s.responses.Add(err.Error(), 0)
+			s.responses.Add(errorKey, 0)
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 		}
