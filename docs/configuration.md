@@ -456,7 +456,9 @@ function transform(req)
 end
 ```
 
-> **Note:** Header, parameter, and cookie values can be a single string or a table (array) for multiple values per key (e.g. `{"val1", "val2"}`).
+> **Note:** Header, parameter, and cookie values can be a single string or a table (array) for multiple values per key (e.g. `{"val1", "val2"}`). Numbers and booleans are converted to text, other values are skipped.
+
+> **Note:** Lua scripts can send their own HTTP requests with `http` and work with JSON through the global `json` table. See [HTTP Requests in Scripts](#http-requests-in-scripts).
 
 **YAML example:**
 
@@ -521,7 +523,9 @@ function transform(req) {
 }
 ```
 
-> **Note:** Header, parameter, and cookie values can be a single string or an array for multiple values per key (e.g. `["val1", "val2"]`).
+> **Note:** Header, parameter, and cookie values can be a single string or an array for multiple values per key (e.g. `["val1", "val2"]`). Numbers and booleans are converted to text, other values are skipped.
+
+> **Note:** JavaScript scripts can send their own HTTP requests with `http`. See [HTTP Requests in Scripts](#http-requests-in-scripts).
 
 **YAML example:**
 
@@ -553,4 +557,101 @@ js:
 
 ```sh
 SARIN_JS='function transform(req) { req.headers["X-Custom"] = "my-value"; return req; }'
+```
+
+## HTTP Requests in Scripts
+
+Lua and JavaScript scripts can send their own HTTP requests and use the response in the main request, for example to fetch a fresh token or CSRF value from another endpoint.
+
+**Function:**
+
+```
+http(url, opts)
+```
+
+`url` must be an absolute `http` or `https` URL. `opts` is optional.
+
+**Options:**
+
+| Option         | Type                        | Default | Description                                                                                            |
+| -------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------------------ |
+| `method`       | string                      | `GET`   | HTTP method, sent as given                                                                             |
+| `headers`      | table/object                | -       | Request headers, same shape as `req.headers`                                                           |
+| `params`       | table/object                | -       | Query parameters, added to any already in the URL                                                      |
+| `cookies`      | table/object                | -       | Cookies, sent as a single `Cookie` header                                                              |
+| `body`         | string                      | `""`    | Request body                                                                                           |
+| `timeout`      | duration string (`"500ms"`) | `30s`   | Request timeout (the `timeout` config does not apply), applied to each hop when redirects are followed |
+| `insecure`     | boolean                     | `false` | Skip TLS verification (the `insecure` config does not apply)                                           |
+| `maxRedirects` | number                      | `0`     | How many redirects to follow, `0` follows none, maximum 100                                            |
+
+Unknown options and values of the wrong type raise an error.
+
+**Response:**
+
+| Field / Method | Description                                                        |
+| -------------- | ------------------------------------------------------------------ |
+| `status`       | Status code (number)                                               |
+| `headers`      | Response headers, each key holding an array of values              |
+| `body`         | Response body (string)                                             |
+| `header(name)` | First value of a header, case-insensitive; `nil`/`null` if missing |
+| `cookie(name)` | Value of a cookie from `Set-Cookie`; `nil`/`null` if missing       |
+| `json()`       | JavaScript only: parses the body as JSON                           |
+
+In Lua, call the helpers as `res:header("name")` or `res.header("name")`.
+
+**Behavior:**
+
+- **Runs on every request:** the requests are sent each time `transform` runs, so every main request triggers them. Script globals persist across requests within a worker, so a script can cache a value itself (e.g. `if not token then token = login() end`).
+- **Same proxy:** when proxies are configured, a script's requests go through the same proxy as the main request they belong to.
+- **Status codes:** non-2xx responses are returned normally; check `status` in the script.
+- **Errors:** network failures and timeouts raise a script error. The main request is not sent and the error is counted in the results. Scripts can catch it with `pcall` (Lua) or `try`/`catch` (JavaScript).
+- **Only inside `transform`:** `http` works anywhere while `transform` runs, including in helper functions it calls. Calling it at the top level of a script raises an error, because that code also runs during config validation and when each worker starts.
+- **Dry run:** script requests are still sent in dry-run mode.
+- **Not measured:** script requests are not included in the results.
+
+**Lua JSON:**
+
+Lua has no built-in JSON support, so Lua scripts get a global `json` table:
+
+- `json.decode(string)`: arrays become 1-indexed tables and `null` becomes `nil` (so `null` array items leave holes).
+- `json.encode(value)`: a table with keys exactly `1..n` becomes an array, any other table becomes an object, and an empty table becomes `{}`.
+
+JavaScript scripts use the built-in `JSON` object.
+
+**Lua example:**
+
+```lua
+function transform(req)
+    local res = http("https://api.example.com/login", {
+        method = "POST",
+        headers = { ["Content-Type"] = "application/json" },
+        body = json.encode({ user = "test", password = "secret" }),
+        timeout = "2s",
+    })
+    if res.status ~= 200 then
+        error("login failed: " .. res.status)
+    end
+
+    req.headers["Authorization"] = "Bearer " .. json.decode(res.body).token
+    return req
+end
+```
+
+**JavaScript example:**
+
+```javascript
+function transform(req) {
+    const res = http("https://api.example.com/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: "test", password: "secret" }),
+        timeout: "2s",
+    });
+    if (res.status !== 200) {
+        throw new Error("login failed: " + res.status);
+    }
+
+    req.headers["Authorization"] = "Bearer " + res.json().token;
+    return req;
+}
 ```

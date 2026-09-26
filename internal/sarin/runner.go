@@ -199,10 +199,15 @@ type sarin struct {
 	logError       bool
 	logFile        string
 
-	hostClients []*fasthttp.HostClient
-	responses   *SarinResponseData
-	fileCache   *FileCache
-	scriptChain *script.Chain
+	// jobsCtx ends the run, either when the duration expires or on Ctrl+C.
+	jobsCtx    context.Context //nolint:containedctx
+	jobsCancel context.CancelFunc
+
+	hostClients       []*fasthttp.HostClient
+	scriptHTTPClients []*scriptHTTPClient
+	responses         *SarinResponseData
+	fileCache         *FileCache
+	scriptChain       *script.Chain
 }
 
 // NewSarin creates a new sarin instance for load testing.
@@ -248,7 +253,12 @@ func NewSarin(
 		}
 	}
 
-	hostClients, err := newHostClients(ctx, timeout, proxies, workers, requestURL, skipCertVerify)
+	proxyURLs := make([]url.URL, len(proxies))
+	for i, proxy := range proxies {
+		proxyURLs[i] = url.URL(proxy)
+	}
+
+	hostClients, err := NewHostClients(ctx, timeout, proxyURLs, workers, requestURL, skipCertVerify)
 	if err != nil {
 		return nil, err
 	}
@@ -266,28 +276,42 @@ func NewSarin(
 
 	scriptChain := script.NewChain(luaSources, jsSources)
 
+	jobsCtx, jobsCancel := context.WithCancel(ctx)
+
+	var scriptHTTPClients []*scriptHTTPClient
+	if !scriptChain.IsEmpty() {
+		scriptHTTPClients, err = newScriptHTTPClients(jobsCtx, proxyURLs, workers)
+		if err != nil {
+			jobsCancel()
+			return nil, err
+		}
+	}
+
 	srn := &sarin{
-		workers:        workers,
-		requestURL:     requestURL,
-		methods:        methods,
-		params:         params,
-		headers:        headers,
-		cookies:        cookies,
-		bodies:         bodies,
-		totalRequests:  totalRequests,
-		totalDuration:  totalDuration,
-		timeout:        timeout,
-		showProgress:   showProgress,
-		skipCertVerify: skipCertVerify,
-		values:         values,
-		collectStats:   collectStats,
-		dryRun:         dryRun,
-		logInfo:        logInfo,
-		logError:       logError,
-		logFile:        logFile,
-		hostClients:    hostClients,
-		fileCache:      NewFileCache(time.Second * 10),
-		scriptChain:    scriptChain,
+		jobsCtx:           jobsCtx,
+		jobsCancel:        jobsCancel,
+		workers:           workers,
+		requestURL:        requestURL,
+		methods:           methods,
+		params:            params,
+		headers:           headers,
+		cookies:           cookies,
+		bodies:            bodies,
+		totalRequests:     totalRequests,
+		totalDuration:     totalDuration,
+		timeout:           timeout,
+		showProgress:      showProgress,
+		skipCertVerify:    skipCertVerify,
+		values:            values,
+		collectStats:      collectStats,
+		dryRun:            dryRun,
+		logInfo:           logInfo,
+		logError:          logError,
+		logFile:           logFile,
+		hostClients:       hostClients,
+		scriptHTTPClients: scriptHTTPClients,
+		fileCache:         NewFileCache(time.Second * 10),
+		scriptChain:       scriptChain,
 	}
 
 	if collectStats {
@@ -301,9 +325,7 @@ func (s sarin) GetResponses() *SarinResponseData {
 	return s.responses
 }
 
-func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
-	jobsCtx, jobsCancel := context.WithCancel(ctx)
-
+func (s sarin) Start(stopCtrl *StopController) {
 	var workersWG sync.WaitGroup
 	jobsCh := make(chan struct{}, max(s.workers, 1))
 
@@ -364,18 +386,17 @@ func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
 	}
 
 	// Start workers
-	s.startWorkers(&workersWG, jobsCh, s.hostClients, &counter, sendLog, sendRespLog)
+	s.startWorkers(&workersWG, jobsCh, &counter, sendLog, sendRespLog)
 
 	if runTUI {
-		//nolint:contextcheck // streamCtx must remain active until all workers complete to ensure all collected data is streamed
 		go s.streamProgress(streamCtx, stopCtrl, streamCh, totalRequests, &counter, tuiLogChannel, showProgressBar)
 	}
 
 	// Setup duration-based cancellation
-	s.setupDurationTimeout(ctx, jobsCancel)
+	s.setupDurationTimeout()
 	// Distribute jobs to workers.
 	// This blocks until all jobs are sent or the context is canceled.
-	s.sendJobs(jobsCtx, jobsCh)
+	s.sendJobs(jobsCh)
 
 	// Close the jobs channel so workers stop after completing their current job
 	close(jobsCh)
@@ -394,7 +415,7 @@ func (s sarin) Start(ctx context.Context, stopCtrl *StopController) {
 }
 
 // newWriterLog builds the loggers that write formatted lines to w (a log file or
-// stderr). sendLog stays general (it filters by each log's level); sendRespLog
+// stderr). sendLog stays general (it filters by each log's level), while sendRespLog
 // only ever emits info, so its decision is baked once into a no-op when off.
 func (s sarin) newWriterLog(w io.Writer) (runtimeLogger, respLogger) {
 	// log.Logger serializes writes with its own mutex, so concurrent workers
@@ -432,65 +453,39 @@ func (s sarin) newChannelLog(ch chan<- runtimeLog) (runtimeLogger, respLogger) {
 	return sendLog, sendRespLog
 }
 
-// newHostClients initializes HTTP clients for the given configuration.
-// It can return the following errors:
-// - types.ProxyDialError
-func newHostClients(
-	ctx context.Context,
-	timeout time.Duration,
-	proxies types.Proxies,
-	workers uint,
-	requestURL *url.URL,
-	skipCertVerify bool,
-) ([]*fasthttp.HostClient, error) {
-	proxiesRaw := make([]url.URL, len(proxies))
-	for i, proxy := range proxies {
-		proxiesRaw[i] = url.URL(proxy)
-	}
-
-	return NewHostClients(
-		ctx,
-		timeout,
-		proxiesRaw,
-		workers,
-		requestURL,
-		skipCertVerify,
-	)
-}
-
-func (s sarin) startWorkers(wg *sync.WaitGroup, jobs <-chan struct{}, hostClients []*fasthttp.HostClient, counter *atomic.Uint64, sendLog runtimeLogger, sendRespLog respLogger) {
+func (s sarin) startWorkers(wg *sync.WaitGroup, jobs <-chan struct{}, counter *atomic.Uint64, sendLog runtimeLogger, sendRespLog respLogger) {
 	for range max(s.workers, 1) {
 		wg.Go(func() {
-			s.Worker(jobs, NewHostClientGenerator(hostClients...), counter, sendLog, sendRespLog)
+			s.Worker(jobs, counter, sendLog, sendRespLog)
 		})
 	}
 }
 
-func (s sarin) setupDurationTimeout(ctx context.Context, cancel context.CancelFunc) {
+func (s sarin) setupDurationTimeout() {
 	if s.totalDuration != nil {
 		go func() {
 			timer := time.NewTimer(*s.totalDuration)
 			defer timer.Stop()
 			select {
 			case <-timer.C:
-				cancel()
-			case <-ctx.Done():
+				s.jobsCancel()
+			case <-s.jobsCtx.Done():
 				// Context cancelled, cleanup
 			}
 		}()
 	}
 }
 
-func (s sarin) sendJobs(ctx context.Context, jobs chan<- struct{}) {
+func (s sarin) sendJobs(jobs chan<- struct{}) {
 	if s.totalRequests != nil && *s.totalRequests > 0 {
 		for range *s.totalRequests {
-			if ctx.Err() != nil {
+			if s.jobsCtx.Err() != nil {
 				break
 			}
 			jobs <- struct{}{}
 		}
 	} else {
-		for ctx.Err() == nil {
+		for s.jobsCtx.Err() == nil {
 			jobs <- struct{}{}
 		}
 	}

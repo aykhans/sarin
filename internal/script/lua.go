@@ -11,6 +11,7 @@ import (
 type LuaEngine struct {
 	state     *lua.LState
 	transform *lua.LFunction
+	http      httpBridge
 }
 
 // NewLuaEngine creates a new Lua script engine with the given script content.
@@ -29,6 +30,11 @@ type LuaEngine struct {
 //   - types.ScriptExecutionError
 func NewLuaEngine(scriptContent string) (*LuaEngine, error) {
 	L := lua.NewState()
+	engine := &LuaEngine{state: L}
+
+	// Register the globals before running the script so its functions can use them
+	engine.registerHTTP()
+	registerLuaJSON(L)
 
 	// Execute the script to define the transform function
 	if err := L.DoString(scriptContent); err != nil {
@@ -42,17 +48,23 @@ func NewLuaEngine(scriptContent string) (*LuaEngine, error) {
 		L.Close()
 		return nil, types.ErrScriptTransformMissing
 	}
+	engine.transform = transform.(*lua.LFunction)
 
-	return &LuaEngine{
-		state:     L,
-		transform: transform.(*lua.LFunction),
-	}, nil
+	return engine, nil
+}
+
+// SetHTTPDoer sets the doer that the script's http.* calls are sent through.
+func (e *LuaEngine) SetHTTPDoer(doer HTTPDoer) {
+	e.http.doer = doer
 }
 
 // Transform executes the Lua transform function with the given request data.
 // It can return the following errors:
 //   - types.ScriptExecutionError
 func (e *LuaEngine) Transform(req *RequestData) error {
+	e.http.active = true
+	defer func() { e.http.active = false }()
+
 	// Convert RequestData to Lua table
 	reqTable := e.requestDataToTable(req)
 
@@ -93,39 +105,23 @@ func (e *LuaEngine) requestDataToTable(req *RequestData) *lua.LTable {
 	t.RawSetString("path", lua.LString(req.Path))
 	t.RawSetString("body", lua.LString(req.Body))
 
-	// Headers (map[string][]string -> table of arrays)
-	headers := L.NewTable()
-	for k, values := range req.Headers {
-		arr := L.NewTable()
+	t.RawSetString("headers", stringSliceMapToTable(L, req.Headers))
+	t.RawSetString("params", stringSliceMapToTable(L, req.Params))
+	t.RawSetString("cookies", stringSliceMapToTable(L, req.Cookies))
+
+	return t
+}
+
+// stringSliceMapToTable converts a Go map[string][]string to a Lua table of arrays.
+func stringSliceMapToTable(state *lua.LState, m map[string][]string) *lua.LTable {
+	t := state.NewTable()
+	for k, values := range m {
+		arr := state.NewTable()
 		for _, v := range values {
 			arr.Append(lua.LString(v))
 		}
-		headers.RawSetString(k, arr)
+		t.RawSetString(k, arr)
 	}
-	t.RawSetString("headers", headers)
-
-	// Params (map[string][]string -> table of arrays)
-	params := L.NewTable()
-	for k, values := range req.Params {
-		arr := L.NewTable()
-		for _, v := range values {
-			arr.Append(lua.LString(v))
-		}
-		params.RawSetString(k, arr)
-	}
-	t.RawSetString("params", params)
-
-	// Cookies (map[string][]string -> table of arrays)
-	cookies := L.NewTable()
-	for k, values := range req.Cookies {
-		arr := L.NewTable()
-		for _, v := range values {
-			arr.Append(lua.LString(v))
-		}
-		cookies.RawSetString(k, arr)
-	}
-	t.RawSetString("cookies", cookies)
-
 	return t
 }
 
@@ -172,20 +168,33 @@ func (e *LuaEngine) tableToStringSliceMap(t *lua.LTable) map[string][]string {
 		}
 		key := string(k.(lua.LString))
 
-		switch v.Type() {
-		case lua.LTString:
-			// Single string value
-			result[key] = []string{string(v.(lua.LString))}
-		case lua.LTTable:
-			// Array of strings
-			var values []string
-			v.(*lua.LTable).ForEach(func(_, item lua.LValue) {
-				if item.Type() == lua.LTString {
-					values = append(values, string(item.(lua.LString)))
+		if v.Type() == lua.LTTable {
+			// Array of values, keys outside 1..n are skipped
+			arr := v.(*lua.LTable)
+			length := arr.Len()
+			values := make([]string, 0, length)
+			for i := 1; i <= length; i++ {
+				if text, ok := luaScalarString(arr.RawGetInt(i)); ok {
+					values = append(values, text)
 				}
-			})
+			}
 			result[key] = values
+			return
+		}
+
+		if text, ok := luaScalarString(v); ok {
+			result[key] = []string{text}
 		}
 	})
 	return result
+}
+
+// luaScalarString renders strings, numbers and booleans as text.
+func luaScalarString(v lua.LValue) (string, bool) {
+	switch v.Type() {
+	case lua.LTString, lua.LTNumber, lua.LTBool:
+		return v.String(), true
+	default:
+		return "", false
+	}
 }

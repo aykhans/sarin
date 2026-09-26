@@ -2,6 +2,7 @@ package script
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/dop251/goja"
 	"go.aykhans.me/sarin/internal/types"
@@ -11,6 +12,10 @@ import (
 type JsEngine struct {
 	runtime   *goja.Runtime
 	transform goja.Callable
+	jsonParse goja.Callable
+	// errorConstructor is the built-in Error, captured before the script can replace it.
+	errorConstructor goja.Value
+	http             httpBridge
 }
 
 // NewJsEngine creates a new JavaScript script engine with the given script content.
@@ -29,11 +34,17 @@ type JsEngine struct {
 //   - types.ScriptExecutionError
 func NewJsEngine(scriptContent string) (*JsEngine, error) {
 	vm := goja.New()
+	engine := &JsEngine{runtime: vm}
+
+	// Register the globals before running the script so its functions can use them
+	if err := engine.registerHTTP(); err != nil {
+		return nil, types.NewScriptExecutionError("JavaScript", err)
+	}
 
 	// Execute the script to define the transform function
 	_, err := vm.RunString(scriptContent)
 	if err != nil {
-		return nil, types.NewScriptExecutionError("JavaScript", err)
+		return nil, types.NewScriptExecutionError("JavaScript", engine.exceptionError(err))
 	}
 
 	// Get the transform function
@@ -47,23 +58,30 @@ func NewJsEngine(scriptContent string) (*JsEngine, error) {
 		return nil, types.NewScriptExecutionError("JavaScript", errors.New("'transform' must be a function"))
 	}
 
-	return &JsEngine{
-		runtime:   vm,
-		transform: transform,
-	}, nil
+	engine.transform = transform
+
+	return engine, nil
+}
+
+// SetHTTPDoer sets the doer that the script's http.* calls are sent through.
+func (e *JsEngine) SetHTTPDoer(doer HTTPDoer) {
+	e.http.doer = doer
 }
 
 // Transform executes the JavaScript transform function with the given request data.
 // It can return the following errors:
 //   - types.ScriptExecutionError
 func (e *JsEngine) Transform(req *RequestData) error {
+	e.http.active = true
+	defer func() { e.http.active = false }()
+
 	// Convert RequestData to JavaScript object
 	reqObj := e.requestDataToObject(req)
 
 	// Call transform(req)
 	result, err := e.transform(goja.Undefined(), reqObj)
 	if err != nil {
-		return types.NewScriptExecutionError("JavaScript", err)
+		return types.NewScriptExecutionError("JavaScript", e.exceptionError(err))
 	}
 
 	// Update RequestData from the returned object
@@ -79,6 +97,8 @@ func (e *JsEngine) Close() {
 	// goja doesn't have an explicit close method, but we can help GC
 	e.runtime = nil
 	e.transform = nil
+	e.jsonParse = nil
+	e.errorConstructor = nil
 }
 
 // requestDataToObject converts RequestData to a goja Value (JavaScript object).
@@ -176,23 +196,52 @@ func (e *JsEngine) objectToStringSliceMap(obj *goja.Object) map[string][]string 
 	result := make(map[string][]string)
 	for _, key := range obj.Keys() {
 		v := obj.Get(key)
-		if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
-			continue
-		}
 
 		// Check if it's an array
-		if arr, ok := v.Export().([]any); ok {
-			var values []string
-			for _, item := range arr {
-				if s, ok := item.(string); ok {
-					values = append(values, s)
+		if arr, ok := v.(*goja.Object); ok && arr.ClassName() == "Array" {
+			length := int(arr.Get("length").ToInteger())
+			values := make([]string, 0, length)
+			for i := range length {
+				if text, ok := jsStringValue(arr.Get(strconv.Itoa(i))); ok {
+					values = append(values, text)
 				}
 			}
 			result[key] = values
-		} else {
-			// Single value - wrap in slice
-			result[key] = []string{v.String()}
+			continue
+		}
+
+		// Single value, wrap it in a slice
+		if text, ok := jsStringValue(v); ok {
+			result[key] = []string{text}
 		}
 	}
 	return result
+}
+
+// exceptionError keeps the thrown value's message without goja's stack frame.
+// Stringifying runs through Runtime.Try because a thrown value with no usable
+// toString makes goja panic outside its own execution context.
+func (e *JsEngine) exceptionError(err error) error {
+	var exception *goja.Exception
+	if !errors.As(err, &exception) {
+		return err
+	}
+
+	var message string
+	if thrown := e.runtime.Try(func() { message = exception.Value().String() }); thrown != nil {
+		message = "unprintable thrown value"
+	}
+	return errors.New(message)
+}
+
+// jsStringValue renders a JavaScript primitive the way the script would see it.
+// Objects, arrays and functions have no useful text form, so they are skipped.
+func jsStringValue(v goja.Value) (string, bool) {
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return "", false
+	}
+	if _, isObject := v.(*goja.Object); isObject {
+		return "", false
+	}
+	return v.String(), true
 }

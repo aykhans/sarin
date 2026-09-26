@@ -91,6 +91,16 @@ func (t *Transformer) Transform(req *RequestData) error {
 	return nil
 }
 
+// SetHTTPDoer sets the doer that the scripts' http.* calls are sent through.
+func (t *Transformer) SetHTTPDoer(doer HTTPDoer) {
+	for _, engine := range t.luaEngines {
+		engine.SetHTTPDoer(doer)
+	}
+	for _, engine := range t.jsEngines {
+		engine.SetHTTPDoer(doer)
+	}
+}
+
 // Close releases all engine resources.
 func (t *Transformer) Close() {
 	for _, engine := range t.luaEngines {

@@ -23,7 +23,7 @@ Flags:
     -h, -help                     Help for sarin
     -v, -version                  Version for sarin
     -s, -show-config   bool       Show the final config after parsing all sources (default %v)
-    -f, -config-file   string     Path to the config file (local file / http URL)
+    -f, -config-file   []string   Path to the config file (local file / http URL)
     -c, -concurrency   uint       Number of concurrent requests (default %d)
     -r, -requests      uint       Number of total requests
     -d, -duration      time       Maximum duration for the test (e.g. 30s, 1m, 5h)

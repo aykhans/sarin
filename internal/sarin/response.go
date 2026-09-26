@@ -17,6 +17,14 @@ import (
 const DefaultResponseDurationAccuracy uint32 = 1
 const DefaultResponseColumnMaxWidth = 50
 
+// maxResponseKeys bounds the distinct response keys, so error messages carrying
+// per-request text cannot grow the map without limit. It stays above the number of
+// HTTP status codes, so real ones are never merged.
+const maxResponseKeys = 1000
+
+// otherResponseKey collects everything that arrives after the key limit is reached.
+const otherResponseKey = "other"
+
 // Duration wraps time.Duration to provide consistent JSON/YAML marshaling as human-readable strings.
 type Duration time.Duration
 
@@ -95,6 +103,11 @@ func (data *SarinResponseData) Add(responseKey string, responseTime time.Duratio
 	defer data.Unlock()
 
 	response, ok := data.Responses[responseKey]
+	if !ok && len(data.Responses) >= maxResponseKeys {
+		responseKey = otherResponseKey
+		response, ok = data.Responses[responseKey]
+	}
+
 	if !ok {
 		data.Responses[responseKey] = &Response{
 			durations: map[time.Duration]uint64{
