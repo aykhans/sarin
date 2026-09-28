@@ -67,8 +67,8 @@ const httpDefaultMethod = http.MethodGet
 // httpMaxRedirectsLimit is the highest maxRedirects a script may ask for.
 const httpMaxRedirectsLimit = 100
 
-// httpMaxBodySizeLimit is the highest maxBodySize a script may ask for, 1 TiB.
-const httpMaxBodySizeLimit int64 = 1 << 40
+// httpMaxBodySizeLimit is the highest maxBodySize a script may ask for.
+const httpMaxBodySizeLimit int64 = types.ByteSizeLimit
 
 // Option keys accepted by the http function.
 const (
@@ -132,8 +132,25 @@ func parseHTTPMaxBodySize(size float64) (int64, error) {
 			httpOptionMaxBodySize,
 			types.NewScriptTypeError(
 				"a whole number of bytes between 0 and "+strconv.FormatInt(httpMaxBodySizeLimit, 10),
-				strconv.FormatFloat(size, 'g', -1, 64),
+				strconv.FormatFloat(size, 'f', -1, 64),
 			),
+		)
+	}
+	return int64(size), nil
+}
+
+// parseHTTPMaxBodySizeString reads a body limit written with a unit, such as "10MiB".
+// It can return the following errors:
+//   - types.ScriptHTTPOptionError
+func parseHTTPMaxBodySizeString(value string) (int64, error) {
+	size, err := types.ParseByteSize(value)
+	if err != nil {
+		return 0, types.NewScriptHTTPOptionError(httpOptionMaxBodySize, err)
+	}
+	if size > uint64(httpMaxBodySizeLimit) {
+		return 0, types.NewScriptHTTPOptionError(
+			httpOptionMaxBodySize,
+			types.NewScriptTypeError("a size up to "+types.FormatByteSize(uint64(httpMaxBodySizeLimit)), value),
 		)
 	}
 	return int64(size), nil

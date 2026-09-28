@@ -196,7 +196,7 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 	}
 
 	if maxResponseBody := parser.getEnv("MAX_RESPONSE_BODY"); maxResponseBody != "" {
-		maxResponseBodyParsed, err := parseByteSize(maxResponseBody)
+		maxResponseBodyParsed, err := types.ParseByteSize(maxResponseBody)
 		if err != nil {
 			fieldParseErrors = append(
 				fieldParseErrors,

@@ -281,7 +281,7 @@ func NewSarin(
 
 	var scriptHTTPClients []*scriptHTTPClient
 	if !scriptChain.IsEmpty() {
-		scriptHTTPClients, err = newScriptHTTPClients(jobsCtx, proxyURLs, workers, maxResponseBody)
+		scriptHTTPClients, err = newScriptHTTPClients(jobsCtx, proxyURLs, workers)
 		if err != nil {
 			jobsCancel()
 			return nil, err

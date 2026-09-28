@@ -293,7 +293,7 @@ func (parser ConfigCLIParser) PrintHelp() {
 
 		Defaults.Method,
 		Defaults.RequestTimeout,
-		formatByteSize(Defaults.MaxResponseBody),
+		types.FormatByteSize(Defaults.MaxResponseBody),
 		Defaults.Insecure,
 	)
 }

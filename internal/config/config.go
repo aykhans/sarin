@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -58,8 +57,6 @@ var (
 	ValidRequestURLSchemes = []string{"http", "https"}
 	ValidLogLevels         = []string{"info", "error"}
 )
-
-const maxResponseBodyLimit = min(1<<40, math.MaxInt) // 1 TiB on 64 bit, 2 GiB - 1 on 32 bit
 
 var (
 	StyleYellow = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
@@ -184,7 +181,7 @@ func (config Config) MarshalYAML() (any, error) {
 		addField(content, "timeout", toNode(*config.Timeout), "")
 	}
 	if config.MaxResponseBody != nil {
-		addField(content, "maxResponseBody", toNode(formatByteSize(*config.MaxResponseBody)), "")
+		addField(content, "maxResponseBody", toNode(types.FormatByteSize(*config.MaxResponseBody)), "")
 	}
 	if config.Concurrency != nil {
 		addField(content, "concurrency", toNode(*config.Concurrency), "")
@@ -469,11 +466,11 @@ func (config Config) Validate() error {
 		validationErrors = append(validationErrors, types.NewFieldValidationError("Timeout", "0", errors.New("timeout must be greater than 0")))
 	}
 
-	if config.MaxResponseBody != nil && *config.MaxResponseBody > maxResponseBodyLimit {
+	if config.MaxResponseBody != nil && *config.MaxResponseBody > types.ByteSizeLimit {
 		validationErrors = append(validationErrors, types.NewFieldValidationError(
 			"MaxResponseBody",
-			formatByteSize(*config.MaxResponseBody),
-			errors.New("max response body must not exceed "+formatByteSize(maxResponseBodyLimit)),
+			types.FormatByteSize(*config.MaxResponseBody),
+			errors.New("max response body must not exceed "+types.FormatByteSize(types.ByteSizeLimit)),
 		))
 	}
 

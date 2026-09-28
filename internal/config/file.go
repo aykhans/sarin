@@ -79,9 +79,12 @@ func fetchHTTP(ctx context.Context, url string) ([]byte, error) {
 		return nil, types.NewHTTPStatusError(url, resp.StatusCode, resp.Status)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, types.RemoteFetchLimit+1))
 	if err != nil {
 		return nil, types.NewHTTPFetchError(url, err)
+	}
+	if len(data) > types.RemoteFetchLimit {
+		return nil, types.NewHTTPFetchError(url, types.ErrRemoteFileTooLarge)
 	}
 
 	return data, nil

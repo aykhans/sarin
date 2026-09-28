@@ -118,13 +118,18 @@ func (e *JsEngine) parseHTTPOptions(opts *goja.Object, req *HTTPRequest) error {
 				return err
 			}
 		case httpOptionMaxBodySize:
-			size, ok := numberValue(value)
-			if !ok {
-				return types.NewScriptHTTPOptionError(name, types.NewScriptTypeError("number", jsTypeName(value)))
-			}
-
 			var err error
-			if req.MaxBodySize, err = parseHTTPMaxBodySize(size); err != nil {
+			switch size := value.Export().(type) {
+			case string:
+				req.MaxBodySize, err = parseHTTPMaxBodySizeString(size)
+			default:
+				number, ok := numberValue(value)
+				if !ok {
+					return types.NewScriptHTTPOptionError(name, types.NewScriptTypeError("number or size string", jsTypeName(value)))
+				}
+				req.MaxBodySize, err = parseHTTPMaxBodySize(number)
+			}
+			if err != nil {
 				return err
 			}
 		default:

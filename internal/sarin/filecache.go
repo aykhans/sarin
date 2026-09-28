@@ -93,9 +93,12 @@ func (fc *FileCache) fetchURL(url string) ([]byte, string, error) {
 		return nil, "", types.NewHTTPStatusError(url, resp.StatusCode, resp.Status)
 	}
 
-	content, err := io.ReadAll(resp.Body)
+	content, err := io.ReadAll(io.LimitReader(resp.Body, types.RemoteFetchLimit+1))
 	if err != nil {
 		return nil, "", types.NewHTTPFetchError(url, err)
+	}
+	if len(content) > types.RemoteFetchLimit {
+		return nil, "", types.NewHTTPFetchError(url, types.ErrRemoteFileTooLarge)
 	}
 
 	// Extract filename from URL path
