@@ -521,7 +521,7 @@ These functions are powered by [gofakeit](https://github.com/brianvoe/gofakeit) 
 | `fakeit_LoremIpsumSentence(wordCount int)`                                               | Lorem ipsum sentence with specified word count  | `{{ fakeit_LoremIpsumSentence 5 }}`           |
 | `fakeit_LoremIpsumParagraph(paragraphs int, sentences int, words int, separator string)` | Lorem ipsum paragraphs with specified structure | `{{ fakeit_LoremIpsumParagraph 1 3 5 "\n" }}` |
 | `fakeit_Question`                                                                        | Random question                                 | `"What is the marginal gain from fear?"`      |
-| `fakeit_Quote`                                                                           | Random quote                                    | `"Energy is contagious—so is fear"`           |
+| `fakeit_Quote`                                                                           | Random quote                                    | `"Energy is contagious so is fear"`           |
 | `fakeit_Phrase`                                                                          | Random phrase                                   | `"how many siblings do you have"`             |
 | `fakeit_PhraseNoun`                                                                      | Noun phrase                                     | `"a tribe"`                                   |
 | `fakeit_PhraseVerb`                                                                      | Verb phrase                                     | `"fully integrate a system"`                  |

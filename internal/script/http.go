@@ -21,7 +21,7 @@ type HTTPRequest struct {
 	Timeout      time.Duration // zero means the doer's default timeout
 	Insecure     bool
 	MaxRedirects int
-	MaxBodySize  int64 // zero means no limit
+	MaxBodySize  *int64 // nil takes the doer default, zero means no limit
 }
 
 // HTTPResponse is the response returned to a script by the http.* functions.
@@ -126,9 +126,9 @@ func parseHTTPMaxRedirects(count float64) (int, error) {
 // parseHTTPMaxBodySize checks that the body limit is a non-negative whole number.
 // It can return the following errors:
 //   - types.ScriptHTTPOptionError
-func parseHTTPMaxBodySize(size float64) (int64, error) {
+func parseHTTPMaxBodySize(size float64) (*int64, error) {
 	if math.IsNaN(size) || size < 0 || size > float64(httpMaxBodySizeLimit) || size != math.Trunc(size) {
-		return 0, types.NewScriptHTTPOptionError(
+		return nil, types.NewScriptHTTPOptionError(
 			httpOptionMaxBodySize,
 			types.NewScriptTypeError(
 				"a whole number of bytes between 0 and "+strconv.FormatInt(httpMaxBodySizeLimit, 10),
@@ -136,24 +136,26 @@ func parseHTTPMaxBodySize(size float64) (int64, error) {
 			),
 		)
 	}
-	return int64(size), nil
+	limit := int64(size)
+	return &limit, nil
 }
 
 // parseHTTPMaxBodySizeString reads a body limit written with a unit, such as "10MiB".
 // It can return the following errors:
 //   - types.ScriptHTTPOptionError
-func parseHTTPMaxBodySizeString(value string) (int64, error) {
+func parseHTTPMaxBodySizeString(value string) (*int64, error) {
 	size, err := types.ParseByteSize(value)
 	if err != nil {
-		return 0, types.NewScriptHTTPOptionError(httpOptionMaxBodySize, err)
+		return nil, types.NewScriptHTTPOptionError(httpOptionMaxBodySize, err)
 	}
 	if size > uint64(httpMaxBodySizeLimit) {
-		return 0, types.NewScriptHTTPOptionError(
+		return nil, types.NewScriptHTTPOptionError(
 			httpOptionMaxBodySize,
 			types.NewScriptTypeError("a size up to "+types.FormatByteSize(uint64(httpMaxBodySizeLimit)), value),
 		)
 	}
-	return int64(size), nil
+	limit := int64(size)
+	return &limit, nil
 }
 
 // parseHTTPTimeout parses a Go duration string such as "500ms" or "2s".

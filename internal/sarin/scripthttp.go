@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -21,6 +22,9 @@ const scriptHTTPDefaultTimeout = 30 * time.Second
 // independent of the max response body config.
 const scriptHTTPDefaultMaxBodySize = 10 << 20 // 10 MiB
 
+// scriptHTTPMaxClients bounds the client cache, since each one holds a connection pool.
+const scriptHTTPMaxClients = 16
+
 // scriptHTTPClientKey picks the client a request needs, since fasthttp takes the body
 // limit per client rather than per request.
 type scriptHTTPClientKey struct {
@@ -33,6 +37,7 @@ type scriptHTTPClient struct {
 	ctx            context.Context //nolint:containedctx
 	newClient      func(key scriptHTTPClientKey) *fasthttp.Client
 	clients        sync.Map
+	clientCount    atomic.Int64
 	defaultTimeout time.Duration
 }
 
@@ -79,18 +84,13 @@ func newScriptHTTPClient(ctx context.Context, dial fasthttp.DialFuncWithTimeout,
 	}
 }
 
-// scriptHTTPBodyCap rounds a limit up to a power of two, so a script that varies its
-// limit cannot mint a client, and a connection pool with it, per request.
-func scriptHTTPBodyCap(maxBodySize int64) int {
-	if maxBodySize <= 0 {
+// scriptHTTPBodyLimit resolves the limit a request is read with, where a request
+// without one takes the default and zero means no limit.
+func scriptHTTPBodyLimit(maxBodySize *int64) int {
+	if maxBodySize == nil {
 		return scriptHTTPDefaultMaxBodySize
 	}
-
-	size := int64(1)
-	for size < maxBodySize {
-		size <<= 1
-	}
-	return safeInt64ToInt(size)
+	return safeInt64ToInt(*maxBodySize)
 }
 
 // dialWithDeadline dials within the request timeout and keeps it as the connection deadline,
@@ -163,7 +163,8 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 		timeout = c.defaultTimeout
 	}
 
-	client := c.clientFor(r.Insecure, r.MaxBodySize)
+	limit := scriptHTTPBodyLimit(r.MaxBodySize)
+	client := c.clientFor(r.Insecure, limit)
 
 	req.SetTimeout(timeout)
 	if r.MaxRedirects > 0 {
@@ -178,11 +179,7 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
 	}
 
-	// The client caps the body at the rounded up limit, so the exact one is checked here.
 	body := resp.Body()
-	if r.MaxBodySize > 0 && int64(len(body)) > r.MaxBodySize {
-		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, types.ErrScriptHTTPBodyTooLarge)
-	}
 
 	return &script.HTTPResponse{
 		Status:  resp.StatusCode(),
@@ -191,13 +188,22 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 	}, nil
 }
 
-// clientFor returns the client whose body limit covers maxBodySize, building it once.
-func (c *scriptHTTPClient) clientFor(insecure bool, maxBodySize int64) *fasthttp.Client {
-	key := scriptHTTPClientKey{insecure: insecure, maxBodySize: scriptHTTPBodyCap(maxBodySize)}
+// clientFor returns the client enforcing maxBodySize, building it once.
+func (c *scriptHTTPClient) clientFor(insecure bool, maxBodySize int) *fasthttp.Client {
+	key := scriptHTTPClientKey{insecure: insecure, maxBodySize: maxBodySize}
 	if client, ok := c.clients.Load(key); ok {
 		return client.(*fasthttp.Client) //nolint:forcetypeassert
 	}
 
-	client, _ := c.clients.LoadOrStore(key, c.newClient(key))
-	return client.(*fasthttp.Client) //nolint:forcetypeassert
+	client := c.newClient(key)
+	// A script that varies its limit would otherwise grow the cache without end.
+	if c.clientCount.Load() >= scriptHTTPMaxClients {
+		return client
+	}
+
+	stored, loaded := c.clients.LoadOrStore(key, client)
+	if !loaded {
+		c.clientCount.Add(1)
+	}
+	return stored.(*fasthttp.Client) //nolint:forcetypeassert
 }

@@ -6,8 +6,9 @@ import (
 	"strings"
 )
 
-// ByteSizeLimit is the largest size any option may ask for, 1 TiB, less where int is 32 bit.
-const ByteSizeLimit = min(1<<40, math.MaxInt)
+// ByteSizeLimit is the largest size any option may ask for. A limit is also the most
+// memory one response may take, so it stays well under what a machine can hold.
+const ByteSizeLimit = 1 << 30 // 1 GiB
 
 // RemoteFetchLimit bounds a file sarin downloads for itself, such as a config file or a script.
 const RemoteFetchLimit = 64 << 20 // 64 MiB

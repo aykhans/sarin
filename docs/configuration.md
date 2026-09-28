@@ -173,13 +173,13 @@ Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
 
 Largest response body sarin reads. Defaults to `10MiB`, and `0` removes the limit.
 
-The value is a whole number of bytes, with or without a unit: `B`, `KB`, `MB`, `GB`, `TB` are powers of 1000, `KiB`, `MiB`, `GiB`, `TiB` are powers of 1024. Case is ignored and a space before the unit is allowed. The largest accepted value is `1TiB`, or `2147483647` on a 32-bit platform.
+The value is a whole number of bytes, with or without a unit: `B`, `KB`, `MB`, `GB`, `TB` are powers of 1000, `KiB`, `MiB`, `GiB`, `TiB` are powers of 1024. Case is ignored and a space before the unit is allowed. The largest accepted value is `1GiB`, because the limit is also the most memory one response may take.
 
 **Examples:** `1048576`, `10MiB`, `2MB`, `512KiB`
 
 A server can declare a `Content-Length` far larger than it sends, and the body is allocated from that declared length, so without a limit a single response can exhaust memory. A response above the limit fails with `body size exceeds the given limit` and is counted like any other error.
 
-The limit applies per response in flight, so the worst case is roughly the limit times the concurrency. Requests made by scripts have their own limit, see [HTTP Requests in Scripts](#http-requests-in-scripts).
+The limit applies per response in flight, and a declared Content-Length is allocated up to it, so the worst case is a few times the limit times the concurrency. Requests made by scripts have their own limit, see [HTTP Requests in Scripts](#http-requests-in-scripts).
 
 ## Concurrency
 
@@ -596,7 +596,7 @@ http(url, opts)
 | `timeout`      | duration string (`"500ms"`) | `30s`   | Request timeout (the `timeout` config does not apply), applied to each hop when redirects are followed |
 | `insecure`     | boolean                     | `false` | Skip TLS verification (the `insecure` config does not apply)                                           |
 | `maxRedirects` | number                      | `0`     | How many redirects to follow, `0` follows none, maximum 100                                            |
-| `maxBodySize`  | number or size (`"10MiB"`)  | `10MiB` | Largest response body to accept (the max response body config does not apply), maximum `1TiB`          |
+| `maxBodySize`  | number or size (`"10MiB"`)  | `10MiB` | Largest response body to accept, `0` accepts any size, maximum `1GiB`                                  |
 
 Unknown options and values of the wrong type raise an error.
 
@@ -619,7 +619,7 @@ In Lua, call the helpers as `res:header("name")` or `res.header("name")`.
 - **Same proxy:** when proxies are configured, a script's requests go through the same proxy as the main request they belong to.
 - **Status codes:** non-2xx responses are returned normally; check `status` in the script.
 - **Errors:** network failures and timeouts raise a script error. The main request is not sent and the error is counted in the results. Scripts can catch it with `pcall` (Lua) or `try`/`catch` (JavaScript).
-- **Response bodies:** script requests carry their own limit, like their own timeout, so the max response body config does not apply to them. A body above `maxBodySize` raises an error instead of being truncated, and a body whose declared `Content-Length` is already above it is refused before it is read.
+- **Response bodies:** script requests carry their own limit, like their own timeout, so the max response body config does not apply to them. A body above `maxBodySize` raises an error instead of being truncated, and a body whose declared `Content-Length` is already above it is refused before it is read. The limit is also the most memory one response may take, so `0` gives a server as much memory as it asks for.
 - **Only inside `transform`:** `http` works anywhere while `transform` runs, including in helper functions it calls. Calling it at the top level of a script raises an error, because that code also runs during config validation and when each worker starts.
 - **Dry run:** script requests are still sent in dry-run mode.
 - **Not measured:** script requests are not included in the results.
