@@ -20,32 +20,33 @@ Simple usage:
 
 Flags:
   General Config:
-    -h, -help                     Help for sarin
-    -v, -version                  Version for sarin
-    -s, -show-config   bool       Show the final config after parsing all sources (default %v)
-    -f, -config-file   []string   Path to the config file (local file / http URL)
-    -c, -concurrency   uint       Number of concurrent requests (default %d)
-    -r, -requests      uint       Number of total requests
-    -d, -duration      time       Maximum duration for the test (e.g. 30s, 1m, 5h)
-    -l, -log-level     string     Runtime log levels to emit, comma-separated (possible values: info, error) (default %s)
-    -w, -log-file      string     Write runtime logs to this file instead of the terminal/stderr
-    -p, -progress      string     Progress display (possible values: bar, none) (default '%v')
-    -o, -output        string     Output format (possible values: table, json, yaml, none) (default '%v')
-    -z, -dry-run       bool       Run without sending requests (default %v)
+    -h, -help                         Help for sarin
+    -v, -version                      Version for sarin
+    -s, -show-config       bool       Show the final config after parsing all sources (default %v)
+    -f, -config-file       []string   Path to the config file (local file / http URL)
+    -c, -concurrency       uint       Number of concurrent requests (default %d)
+    -r, -requests          uint       Number of total requests
+    -d, -duration          time       Maximum duration for the test (e.g. 30s, 1m, 5h)
+    -l, -log-level         string     Runtime log levels to emit, comma-separated (possible values: info, error) (default %s)
+    -w, -log-file          string     Write runtime logs to this file instead of the terminal/stderr
+    -p, -progress          string     Progress display (possible values: bar, none) (default '%v')
+    -o, -output            string     Output format (possible values: table, json, yaml, none) (default '%v')
+    -z, -dry-run           bool       Run without sending requests (default %v)
 
   Request Config:
-    -U, -url           string     Target URL for the request
-    -M, -method        []string   HTTP method for the request (default %s)
-    -B, -body          []string   Body for the request (e.g. "body text")
-    -P, -param         []string   URL parameter for the request (e.g. "key1=value1")
-    -H, -header        []string   Header for the request (e.g. "key1: value1")
-    -C, -cookie        []string   Cookie for the request (e.g. "key1=value1")
-    -X, -proxy         []string   Proxy for the request (e.g. "http://proxy.example.com:8080")
-    -V, -values        []string   List of values for templating (e.g. "key1=value1")
-    -T, -timeout       time       Timeout for the request (e.g. 400ms, 3s, 1m10s) (default %v)
-    -I, -insecure      bool       Skip SSL/TLS certificate verification (default %v)
-        -lua           []string   Lua script for request transformation (inline or @file/@url)
-        -js            []string   JavaScript script for request transformation (inline or @file/@url)`
+    -U, -url               string     Target URL for the request
+    -M, -method            []string   HTTP method for the request (default %s)
+    -B, -body              []string   Body for the request (e.g. "body text")
+    -P, -param             []string   URL parameter for the request (e.g. "key1=value1")
+    -H, -header            []string   Header for the request (e.g. "key1: value1")
+    -C, -cookie            []string   Cookie for the request (e.g. "key1=value1")
+    -X, -proxy             []string   Proxy for the request (e.g. "http://proxy.example.com:8080")
+    -V, -values            []string   List of values for templating (e.g. "key1=value1")
+    -T, -timeout           time       Timeout for the request (e.g. 400ms, 3s, 1m10s) (default %v)
+    -S, -max-response-body size       Largest response body to read (e.g. 10MiB, 2MB), 0 for no limit (default %s)
+    -I, -insecure          bool       Skip SSL/TLS certificate verification (default %v)
+        -lua               []string   Lua script for request transformation (inline or @file/@url)
+        -js                []string   JavaScript script for request transformation (inline or @file/@url)`
 
 var _ IParser = ConfigCLIParser{}
 
@@ -97,18 +98,19 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		dryRun       bool
 
 		// Request config
-		urlInput   string
-		methods    = stringSliceArg{}
-		bodies     = stringSliceArg{}
-		params     = stringSliceArg{}
-		headers    = stringSliceArg{}
-		cookies    = stringSliceArg{}
-		proxies    = stringSliceArg{}
-		values     = stringSliceArg{}
-		timeout    time.Duration
-		insecure   bool
-		luaScripts = stringSliceArg{}
-		jsScripts  = stringSliceArg{}
+		urlInput        string
+		methods         = stringSliceArg{}
+		bodies          = stringSliceArg{}
+		params          = stringSliceArg{}
+		headers         = stringSliceArg{}
+		cookies         = stringSliceArg{}
+		proxies         = stringSliceArg{}
+		values          = stringSliceArg{}
+		timeout         time.Duration
+		maxResponseBody byteSize
+		insecure        bool
+		luaScripts      = stringSliceArg{}
+		jsScripts       = stringSliceArg{}
 	)
 
 	{
@@ -173,6 +175,9 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 
 		flagSet.DurationVar(&timeout, "timeout", 0, "Timeout for the request (e.g. 400ms, 15s, 1m10s)")
 		flagSet.DurationVar(&timeout, "T", 0, "Timeout for the request (e.g. 400ms, 15s, 1m10s)")
+
+		flagSet.Var(&maxResponseBody, "max-response-body", "Largest response body to read (e.g. 1048576, 10MiB, 2MB), 0 for no limit")
+		flagSet.Var(&maxResponseBody, "S", "Largest response body to read (e.g. 1048576, 10MiB, 2MB), 0 for no limit")
 
 		flagSet.BoolVar(&insecure, "insecure", false, "Skip SSL/TLS certificate verification")
 		flagSet.BoolVar(&insecure, "I", false, "Skip SSL/TLS certificate verification")
@@ -258,6 +263,8 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 			config.Values = append(config.Values, values...)
 		case "timeout", "T":
 			config.Timeout = new(timeout)
+		case "max-response-body", "S":
+			config.MaxResponseBody = new(uint64(maxResponseBody))
 		case "insecure", "I":
 			config.Insecure = new(insecure)
 		case "lua":
@@ -286,6 +293,7 @@ func (parser ConfigCLIParser) PrintHelp() {
 
 		Defaults.Method,
 		Defaults.RequestTimeout,
+		formatByteSize(Defaults.MaxResponseBody),
 		Defaults.Insecure,
 	)
 }

@@ -195,6 +195,22 @@ func (parser ConfigENVParser) Parse() (*Config, error) {
 		}
 	}
 
+	if maxResponseBody := parser.getEnv("MAX_RESPONSE_BODY"); maxResponseBody != "" {
+		maxResponseBodyParsed, err := parseByteSize(maxResponseBody)
+		if err != nil {
+			fieldParseErrors = append(
+				fieldParseErrors,
+				types.NewFieldParseError(
+					parser.getFullEnvName("MAX_RESPONSE_BODY"),
+					maxResponseBody,
+					err,
+				),
+			)
+		} else {
+			config.MaxResponseBody = &maxResponseBodyParsed
+		}
+	}
+
 	if insecure := parser.getEnv("INSECURE"); insecure != "" {
 		insecureParsed, err := utilsParse.ParseString[bool](insecure)
 		if err != nil {

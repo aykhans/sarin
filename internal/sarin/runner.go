@@ -225,6 +225,7 @@ func NewSarin(
 	totalDuration *time.Duration,
 	showProgress bool,
 	skipCertVerify bool,
+	maxResponseBody uint64,
 	params types.Params,
 	headers types.Headers,
 	cookies types.Cookies,
@@ -258,7 +259,7 @@ func NewSarin(
 		proxyURLs[i] = url.URL(proxy)
 	}
 
-	hostClients, err := NewHostClients(ctx, timeout, proxyURLs, workers, requestURL, skipCertVerify)
+	hostClients, err := NewHostClients(ctx, timeout, proxyURLs, workers, requestURL, skipCertVerify, maxResponseBody)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +281,7 @@ func NewSarin(
 
 	var scriptHTTPClients []*scriptHTTPClient
 	if !scriptChain.IsEmpty() {
-		scriptHTTPClients, err = newScriptHTTPClients(jobsCtx, proxyURLs, workers)
+		scriptHTTPClients, err = newScriptHTTPClients(jobsCtx, proxyURLs, workers, maxResponseBody)
 		if err != nil {
 			jobsCancel()
 			return nil, err

@@ -67,7 +67,7 @@ nix run github:aykhans/sarin/release -- -U http://example.com -r 100 -c 10
 Install into your profile:
 
 ```sh
-nix profile install github:aykhans/sarin/release
+nix profile add github:aykhans/sarin/release
 ```
 
 Or add it to your own flake via the overlay:

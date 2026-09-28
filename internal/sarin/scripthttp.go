@@ -1,8 +1,11 @@
 package sarin
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
+	"io"
 	"net"
 	"net/url"
 	"time"
@@ -28,9 +31,9 @@ var _ script.HTTPDoer = (*scriptHTTPClient)(nil)
 // newScriptHTTPClients creates one client per proxy, in the same order as NewHostClients.
 // It can return the following errors:
 //   - types.ProxyDialError
-func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint) ([]*scriptHTTPClient, error) {
+func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint, maxResponseBody uint64) ([]*scriptHTTPClient, error) {
 	if len(proxies) == 0 {
-		return []*scriptHTTPClient{newScriptHTTPClient(ctx, fasthttp.DialDualStackTimeout, scriptHTTPDefaultTimeout, maxConns)}, nil
+		return []*scriptHTTPClient{newScriptHTTPClient(ctx, fasthttp.DialDualStackTimeout, scriptHTTPDefaultTimeout, maxConns, maxResponseBody)}, nil
 	}
 
 	clients := make([]*scriptHTTPClient, 0, len(proxies))
@@ -39,18 +42,19 @@ func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint)
 		if err != nil {
 			return nil, types.NewProxyDialError(proxy.String(), err)
 		}
-		clients = append(clients, newScriptHTTPClient(ctx, dial, scriptHTTPDefaultTimeout, maxConns))
+		clients = append(clients, newScriptHTTPClient(ctx, dial, scriptHTTPDefaultTimeout, maxConns, maxResponseBody))
 	}
 	return clients, nil
 }
 
-func newScriptHTTPClient(ctx context.Context, dial fasthttp.DialFuncWithTimeout, defaultTimeout time.Duration, maxConns uint) *scriptHTTPClient {
+func newScriptHTTPClient(ctx context.Context, dial fasthttp.DialFuncWithTimeout, defaultTimeout time.Duration, maxConns uint, maxResponseBody uint64) *scriptHTTPClient {
 	newClient := func(insecure bool) *fasthttp.Client {
 		// Read and write timeouts stay unset because they would cap the per-call timeout,
 		// so dialWithDeadline is what bounds the TLS handshake.
 		return &fasthttp.Client{
-			DialTimeout:     dialWithDeadline(dial),
-			MaxConnsPerHost: safeUintToInt(maxConns),
+			DialTimeout:         dialWithDeadline(dial),
+			MaxConnsPerHost:     safeUintToInt(maxConns),
+			MaxResponseBodySize: safeUint64ToInt(maxResponseBody),
 			TLSConfig: &tls.Config{
 				InsecureSkipVerify: insecure, //nolint:gosec
 			},
@@ -144,6 +148,8 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 	}
 
 	req.SetTimeout(timeout)
+	// A body limit streams the response, so a declared Content-Length is never allocated.
+	resp.StreamBody = r.MaxBodySize > 0
 	if r.MaxRedirects > 0 {
 		err = client.DoRedirects(req, resp, r.MaxRedirects)
 	} else {
@@ -153,9 +159,47 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
 	}
 
+	body, err := readScriptBody(resp, r.MaxBodySize)
+	if err != nil {
+		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
+	}
+
 	return &script.HTTPResponse{
 		Status:  resp.StatusCode(),
 		Headers: collectRespHeaders(resp),
-		Body:    string(resp.Body()),
+		Body:    body,
 	}, nil
+}
+
+// readScriptBody reads the streamed body, refusing it once it passes maxBodySize.
+// It can return the following errors:
+//   - types.ErrScriptHTTPBodyTooLarge
+func readScriptBody(resp *fasthttp.Response, maxBodySize int64) (string, error) {
+	stream := resp.BodyStream()
+	if stream == nil {
+		return string(resp.Body()), nil
+	}
+
+	var (
+		body bytes.Buffer
+		err  error
+	)
+	if maxBodySize > 0 {
+		// One byte past the limit tells an exact fit from an overflow.
+		_, err = io.CopyN(&body, stream, maxBodySize+1)
+		if err == nil {
+			err = types.ErrScriptHTTPBodyTooLarge
+		} else if errors.Is(err, io.EOF) {
+			err = nil
+		}
+	} else {
+		_, err = io.Copy(&body, stream)
+	}
+
+	// An unfinished stream makes fasthttp drop the connection instead of pooling it.
+	_ = resp.CloseBodyStream()
+	if err != nil {
+		return "", err
+	}
+	return body.String(), nil
 }

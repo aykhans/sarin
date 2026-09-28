@@ -10,6 +10,11 @@ import (
 
 var (
 	errNoError = errors.New("no error (internal)")
+
+	ErrByteSizeInvalid = errors.New(
+		"invalid value for size, expected a whole number of bytes or a whole number with a unit: " +
+			"B, KB, MB, GB, TB (1000 based) or KiB, MiB, GiB, TiB (1024 based), e.g. '1048576', '10MiB', '2MB'",
+	)
 )
 
 type FieldParseError struct {
@@ -408,6 +413,7 @@ var (
 	ErrScriptHTTPMethodEmpty       = errors.New("http method cannot be empty")
 	ErrScriptHTTPURLInvalid        = errors.New("URL must be an absolute http or https URL")
 	ErrScriptHTTPUnknownOption     = errors.New("unknown option")
+	ErrScriptHTTPBodyTooLarge      = errors.New("response body exceeds maxBodySize")
 	ErrScriptJSONCycle             = errors.New("cannot encode a table that contains itself")
 )
 

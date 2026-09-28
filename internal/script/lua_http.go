@@ -106,6 +106,13 @@ func (e *LuaEngine) parseHTTPOptions(opts *lua.LTable, req *HTTPRequest) error {
 				return
 			}
 			req.MaxRedirects, err = parseHTTPMaxRedirects(float64(count))
+		case httpOptionMaxBodySize:
+			size, ok := v.(lua.LNumber)
+			if !ok {
+				err = types.NewScriptHTTPOptionError(name, types.NewScriptTypeError("number", v.Type().String()))
+				return
+			}
+			req.MaxBodySize, err = parseHTTPMaxBodySize(float64(size))
 		default:
 			err = types.NewScriptHTTPOptionError(name, types.ErrScriptHTTPUnknownOption)
 		}

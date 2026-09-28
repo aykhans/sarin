@@ -192,28 +192,29 @@ func (kv *keyValuesField) unmarshalMapping(node *yaml.Node) error {
 }
 
 type configYAML struct {
-	ShowConfig   *bool              `yaml:"showConfig"`
-	ConfigFiles  stringOrSliceField `yaml:"configFile"`
-	Concurrency  *uint              `yaml:"concurrency"`
-	RequestCount *uint64            `yaml:"requests"`
-	Duration     *time.Duration     `yaml:"duration"`
-	LogLevel     *string            `yaml:"logLevel"`
-	LogFile      *string            `yaml:"logFile"`
-	Progress     *string            `yaml:"progress"`
-	Output       *string            `yaml:"output"`
-	DryRun       *bool              `yaml:"dryRun"`
-	URL          *string            `yaml:"url"`
-	Method       stringOrSliceField `yaml:"method"`
-	Bodies       stringOrSliceField `yaml:"body"`
-	Params       keyValuesField     `yaml:"params"`
-	Headers      keyValuesField     `yaml:"headers"`
-	Cookies      keyValuesField     `yaml:"cookies"`
-	Proxies      stringOrSliceField `yaml:"proxy"`
-	Values       stringOrSliceField `yaml:"values"`
-	Timeout      *time.Duration     `yaml:"timeout"`
-	Insecure     *bool              `yaml:"insecure"`
-	Lua          stringOrSliceField `yaml:"lua"`
-	Js           stringOrSliceField `yaml:"js"`
+	ShowConfig      *bool              `yaml:"showConfig"`
+	ConfigFiles     stringOrSliceField `yaml:"configFile"`
+	Concurrency     *uint              `yaml:"concurrency"`
+	RequestCount    *uint64            `yaml:"requests"`
+	Duration        *time.Duration     `yaml:"duration"`
+	LogLevel        *string            `yaml:"logLevel"`
+	LogFile         *string            `yaml:"logFile"`
+	Progress        *string            `yaml:"progress"`
+	Output          *string            `yaml:"output"`
+	DryRun          *bool              `yaml:"dryRun"`
+	URL             *string            `yaml:"url"`
+	Method          stringOrSliceField `yaml:"method"`
+	Bodies          stringOrSliceField `yaml:"body"`
+	Params          keyValuesField     `yaml:"params"`
+	Headers         keyValuesField     `yaml:"headers"`
+	Cookies         keyValuesField     `yaml:"cookies"`
+	Proxies         stringOrSliceField `yaml:"proxy"`
+	Values          stringOrSliceField `yaml:"values"`
+	Timeout         *time.Duration     `yaml:"timeout"`
+	MaxResponseBody *byteSize          `yaml:"maxResponseBody"`
+	Insecure        *bool              `yaml:"insecure"`
+	Lua             stringOrSliceField `yaml:"lua"`
+	Js              stringOrSliceField `yaml:"js"`
 }
 
 // ParseYAML parses YAML config file arguments into a Config object.
@@ -290,6 +291,9 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 
 	config.Values = append(config.Values, parsedData.Values...)
 	config.Timeout = parsedData.Timeout
+	if parsedData.MaxResponseBody != nil {
+		config.MaxResponseBody = new(uint64(*parsedData.MaxResponseBody))
+	}
 	config.Insecure = parsedData.Insecure
 	config.Lua = append(config.Lua, parsedData.Lua...)
 	config.Js = append(config.Js, parsedData.Js...)

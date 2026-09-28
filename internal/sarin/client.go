@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,13 +19,6 @@ import (
 // clientIndexGenerator returns the index of the host client (and proxy) to use next.
 type clientIndexGenerator func() int
 
-func safeUintToInt(u uint) int {
-	if u > math.MaxInt {
-		return math.MaxInt
-	}
-	return int(u)
-}
-
 // NewHostClients creates a list of fasthttp.HostClient instances for the given proxies.
 // If no proxies are provided, a single client without a proxy is returned.
 // It can return the following errors:
@@ -38,6 +30,7 @@ func NewHostClients(
 	maxConns uint,
 	requestURL *url.URL,
 	skipVerify bool,
+	maxResponseBody uint64,
 ) ([]*fasthttp.HostClient, error) {
 	isTLS := requestURL.Scheme == "https"
 
@@ -66,6 +59,7 @@ func NewHostClients(
 				MaxConnDuration:               timeout,
 				WriteTimeout:                  timeout,
 				ReadTimeout:                   timeout,
+				MaxResponseBodySize:           safeUint64ToInt(maxResponseBody),
 				DisableHeaderNamesNormalizing: true,
 				DisablePathNormalizing:        true,
 				NoDefaultUserAgentHeader:      true,
@@ -88,6 +82,7 @@ func NewHostClients(
 		MaxConnDuration:               timeout,
 		WriteTimeout:                  timeout,
 		ReadTimeout:                   timeout,
+		MaxResponseBodySize:           safeUint64ToInt(maxResponseBody),
 		DisableHeaderNamesNormalizing: true,
 		DisablePathNormalizing:        true,
 		NoDefaultUserAgentHeader:      true,

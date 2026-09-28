@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,27 +28,29 @@ import (
 )
 
 var Defaults = struct {
-	UserAgent      string
-	Method         string
-	RequestTimeout time.Duration
-	Concurrency    uint
-	ShowConfig     bool
-	Progress       ConfigProgressType
-	Insecure       bool
-	Output         ConfigOutputType
-	DryRun         bool
-	LogLevel       string
+	UserAgent       string
+	Method          string
+	RequestTimeout  time.Duration
+	MaxResponseBody uint64
+	Concurrency     uint
+	ShowConfig      bool
+	Progress        ConfigProgressType
+	Insecure        bool
+	Output          ConfigOutputType
+	DryRun          bool
+	LogLevel        string
 }{
-	UserAgent:      "Sarin/" + version.Version,
-	Method:         "GET",
-	RequestTimeout: time.Second * 10,
-	Concurrency:    1,
-	ShowConfig:     false,
-	Progress:       ConfigProgressTypeBar,
-	Insecure:       false,
-	Output:         ConfigOutputTypeTable,
-	DryRun:         false,
-	LogLevel:       "error",
+	UserAgent:       "Sarin/" + version.Version,
+	Method:          "GET",
+	RequestTimeout:  time.Second * 10,
+	MaxResponseBody: 10 << 20, // 10 MiB
+	Concurrency:     1,
+	ShowConfig:      false,
+	Progress:        ConfigProgressTypeBar,
+	Insecure:        false,
+	Output:          ConfigOutputTypeTable,
+	DryRun:          false,
+	LogLevel:        "error",
 }
 
 var (
@@ -55,6 +58,8 @@ var (
 	ValidRequestURLSchemes = []string{"http", "https"}
 	ValidLogLevels         = []string{"info", "error"}
 )
+
+const maxResponseBodyLimit = min(1<<40, math.MaxInt) // 1 TiB on 64 bit, 2 GiB - 1 on 32 bit
 
 var (
 	StyleYellow = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
@@ -82,28 +87,29 @@ var (
 )
 
 type Config struct {
-	ShowConfig  *bool               `yaml:"showConfig,omitempty"`
-	Files       []types.ConfigFile  `yaml:"files,omitempty"`
-	Methods     []string            `yaml:"methods,omitempty"`
-	URL         *url.URL            `yaml:"url,omitempty"`
-	Timeout     *time.Duration      `yaml:"timeout,omitempty"`
-	Concurrency *uint               `yaml:"concurrency,omitempty"`
-	Requests    *uint64             `yaml:"requests,omitempty"`
-	Duration    *time.Duration      `yaml:"duration,omitempty"`
-	Progress    *ConfigProgressType `yaml:"progress,omitempty"`
-	Output      *ConfigOutputType   `yaml:"output,omitempty"`
-	Insecure    *bool               `yaml:"insecure,omitempty"`
-	DryRun      *bool               `yaml:"dryRun,omitempty"`
-	Params      types.Params        `yaml:"params,omitempty"`
-	Headers     types.Headers       `yaml:"headers,omitempty"`
-	Cookies     types.Cookies       `yaml:"cookies,omitempty"`
-	Bodies      []string            `yaml:"bodies,omitempty"`
-	Proxies     types.Proxies       `yaml:"proxies,omitempty"`
-	Values      []string            `yaml:"values,omitempty"`
-	Lua         []string            `yaml:"lua,omitempty"`
-	Js          []string            `yaml:"js,omitempty"`
-	LogLevel    *string             `yaml:"logLevel,omitempty"`
-	LogFile     *string             `yaml:"logFile,omitempty"`
+	ShowConfig      *bool               `yaml:"showConfig,omitempty"`
+	Files           []types.ConfigFile  `yaml:"files,omitempty"`
+	Methods         []string            `yaml:"methods,omitempty"`
+	URL             *url.URL            `yaml:"url,omitempty"`
+	Timeout         *time.Duration      `yaml:"timeout,omitempty"`
+	MaxResponseBody *uint64             `yaml:"maxResponseBody,omitempty"`
+	Concurrency     *uint               `yaml:"concurrency,omitempty"`
+	Requests        *uint64             `yaml:"requests,omitempty"`
+	Duration        *time.Duration      `yaml:"duration,omitempty"`
+	Progress        *ConfigProgressType `yaml:"progress,omitempty"`
+	Output          *ConfigOutputType   `yaml:"output,omitempty"`
+	Insecure        *bool               `yaml:"insecure,omitempty"`
+	DryRun          *bool               `yaml:"dryRun,omitempty"`
+	Params          types.Params        `yaml:"params,omitempty"`
+	Headers         types.Headers       `yaml:"headers,omitempty"`
+	Cookies         types.Cookies       `yaml:"cookies,omitempty"`
+	Bodies          []string            `yaml:"bodies,omitempty"`
+	Proxies         types.Proxies       `yaml:"proxies,omitempty"`
+	Values          []string            `yaml:"values,omitempty"`
+	Lua             []string            `yaml:"lua,omitempty"`
+	Js              []string            `yaml:"js,omitempty"`
+	LogLevel        *string             `yaml:"logLevel,omitempty"`
+	LogFile         *string             `yaml:"logFile,omitempty"`
 }
 
 func (config Config) MarshalYAML() (any, error) {
@@ -176,6 +182,9 @@ func (config Config) MarshalYAML() (any, error) {
 	}
 	if config.Timeout != nil {
 		addField(content, "timeout", toNode(*config.Timeout), "")
+	}
+	if config.MaxResponseBody != nil {
+		addField(content, "maxResponseBody", toNode(formatByteSize(*config.MaxResponseBody)), "")
 	}
 	if config.Concurrency != nil {
 		addField(content, "concurrency", toNode(*config.Concurrency), "")
@@ -301,6 +310,9 @@ func (config *Config) Merge(newConfig *Config) {
 	if newConfig.Timeout != nil {
 		config.Timeout = newConfig.Timeout
 	}
+	if newConfig.MaxResponseBody != nil {
+		config.MaxResponseBody = newConfig.MaxResponseBody
+	}
 	if newConfig.Concurrency != nil {
 		config.Concurrency = newConfig.Concurrency
 	}
@@ -379,6 +391,9 @@ func (config *Config) SetDefaults() {
 	if config.Timeout == nil {
 		config.Timeout = &Defaults.RequestTimeout
 	}
+	if config.MaxResponseBody == nil {
+		config.MaxResponseBody = &Defaults.MaxResponseBody
+	}
 	if config.Concurrency == nil {
 		config.Concurrency = new(Defaults.Concurrency)
 	}
@@ -452,6 +467,14 @@ func (config Config) Validate() error {
 
 	if config.Timeout == nil || *config.Timeout < 1 {
 		validationErrors = append(validationErrors, types.NewFieldValidationError("Timeout", "0", errors.New("timeout must be greater than 0")))
+	}
+
+	if config.MaxResponseBody != nil && *config.MaxResponseBody > maxResponseBodyLimit {
+		validationErrors = append(validationErrors, types.NewFieldValidationError(
+			"MaxResponseBody",
+			formatByteSize(*config.MaxResponseBody),
+			errors.New("max response body must not exceed "+formatByteSize(maxResponseBodyLimit)),
+		))
 	}
 
 	if config.ShowConfig == nil {

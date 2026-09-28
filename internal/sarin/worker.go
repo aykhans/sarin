@@ -2,7 +2,9 @@ package sarin
 
 import (
 	"errors"
+	"net"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +31,20 @@ func statusCodeToString(code int) string {
 		return statusCodeStrings[i]
 	}
 	return strconv.Itoa(code)
+}
+
+// responseErrorKey drops the local address, whose port would mint a stats entry per connection.
+func responseErrorKey(err error) string {
+	message := err.Error()
+
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) || opErr.Source == nil {
+		return message
+	}
+
+	withoutSource := *opErr
+	withoutSource.Source = nil
+	return strings.Replace(message, opErr.Error(), withoutSource.Error(), 1)
 }
 
 // requestErrorKey keys a generation failure by its source instead of its message.
@@ -135,7 +151,7 @@ func (s sarin) workerStatsWithDynamic(
 		respDuration := time.Since(startTime)
 
 		if err != nil {
-			s.responses.Add(err.Error(), respDuration)
+			s.responses.Add(responseErrorKey(err), respDuration)
 		} else {
 			s.responses.Add(statusCodeToString(resp.StatusCode()), respDuration)
 			sendRespLog(respDuration, resp)
@@ -170,7 +186,7 @@ func (s sarin) workerStatsWithStatic(
 		err := s.hostClients[nextClientIndex()].DoTimeout(req, resp, s.timeout)
 		respDuration := time.Since(startTime)
 		if err != nil {
-			s.responses.Add(err.Error(), respDuration)
+			s.responses.Add(responseErrorKey(err), respDuration)
 		} else {
 			s.responses.Add(statusCodeToString(resp.StatusCode()), respDuration)
 			sendRespLog(respDuration, resp)
