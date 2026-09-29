@@ -177,7 +177,7 @@ The value is a whole number of bytes, with or without a unit: `B`, `KB`, `MB`, `
 
 **Examples:** `1048576`, `10MiB`, `2MB`, `512KiB`
 
-A server can declare a `Content-Length` far larger than it sends, and the body is allocated from that declared length, so without a limit a single response can exhaust memory. A response above the limit fails with `body size exceeds the given limit` and is counted like any other error.
+A server can declare a `Content-Length` far larger than it sends, and the body is allocated from that declared length, so without a limit a single response can exhaust memory. A response above the limit fails with `response body exceeds the body limit` and is counted like any other error.
 
 The limit applies per response in flight, and a declared Content-Length is allocated up to it, so the worst case is a few times the limit times the concurrency. It covers the requests scripts make as well.
 

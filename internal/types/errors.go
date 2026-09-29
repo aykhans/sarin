@@ -17,6 +17,8 @@ var (
 	)
 
 	ErrRemoteFileTooLarge = errors.New("remote file exceeds " + FormatByteSize(RemoteFetchLimit))
+
+	ErrResponseBodyTooLarge = errors.New("response body exceeds the body limit")
 )
 
 type FieldParseError struct {
@@ -415,7 +417,6 @@ var (
 	ErrScriptHTTPMethodEmpty       = errors.New("http method cannot be empty")
 	ErrScriptHTTPURLInvalid        = errors.New("URL must be an absolute http or https URL")
 	ErrScriptHTTPUnknownOption     = errors.New("unknown option")
-	ErrScriptHTTPBodyTooLarge      = errors.New("response body exceeds the body limit")
 	ErrScriptJSONCycle             = errors.New("cannot encode a table that contains itself")
 )
 

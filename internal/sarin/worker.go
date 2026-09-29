@@ -35,6 +35,10 @@ func statusCodeToString(code int) string {
 
 // responseErrorKey drops the local address, whose port would mint a stats entry per connection.
 func responseErrorKey(err error) string {
+	if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+		return types.ErrResponseBodyTooLarge.Error()
+	}
+
 	message := err.Error()
 
 	var opErr *net.OpError

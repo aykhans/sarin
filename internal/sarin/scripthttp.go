@@ -159,7 +159,7 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 	}
 	if err != nil {
 		if errors.Is(err, fasthttp.ErrBodyTooLarge) {
-			err = types.ErrScriptHTTPBodyTooLarge
+			err = types.ErrResponseBodyTooLarge
 		}
 		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
 	}
