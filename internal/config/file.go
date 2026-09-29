@@ -3,12 +3,14 @@ package config
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -240,7 +242,15 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 	decoder.KnownFields(true)
 	// The decoder returns a bare io.EOF for an empty file, errors.Is would also match a wrapped one.
 	if err := decoder.Decode(parsedData); err != nil && err != io.EOF { //nolint:errorlint
-		return nil, types.NewUnmarshalError(err)
+		return nil, types.NewUnmarshalError(yamlError(err))
+	}
+
+	// Decode reads one document, so anything after the first "---" would be dropped silently.
+	switch err := decoder.Decode(&yaml.Node{}); {
+	case err == nil:
+		return nil, types.NewUnmarshalError(types.ErrYAMLMultipleDocuments)
+	case err != io.EOF: //nolint:errorlint
+		return nil, types.NewUnmarshalError(yamlError(err))
 	}
 
 	var fieldParseErrors []types.FieldParseError
@@ -314,4 +324,38 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 	}
 
 	return config, nil
+}
+
+// configYAMLTypeName is the Go type name the yaml package puts in its messages.
+var configYAMLTypeName = reflect.TypeFor[configYAML]().String()
+
+// yamlError rewrites yaml decode errors so they name config keys instead of Go types.
+func yamlError(err error) error {
+	var loadErrors *yaml.LoadErrors
+	if !errors.As(err, &loadErrors) || len(loadErrors.Errors) == 0 {
+		return err
+	}
+
+	var builder strings.Builder
+	for i, loadError := range loadErrors.Errors {
+		if i > 0 {
+			builder.WriteString("\n")
+		}
+		if loadError.Mark.Line > 0 {
+			fmt.Fprintf(&builder, "line %d: ", loadError.Mark.Line)
+		}
+		builder.WriteString(yamlErrorMessage(loadError.Message))
+	}
+
+	return errors.New(builder.String())
+}
+
+// yamlErrorMessage turns "field x not found in type config.configYAML" into "unknown key "x"".
+func yamlErrorMessage(message string) string {
+	if field, ok := strings.CutPrefix(message, "field "); ok {
+		if name, _, ok := strings.Cut(field, " not found in type "); ok {
+			return fmt.Sprintf("unknown key %q", name)
+		}
+	}
+	return strings.ReplaceAll(message, configYAMLTypeName, "the config file")
 }

@@ -30,19 +30,10 @@ func (size *byteSize) Set(value string) error {
 	return nil
 }
 
-// UnmarshalYAML accepts both a YAML integer and a string with a unit.
+// UnmarshalYAML reads the raw scalar so a size parses the same way here as on the command line.
 func (size *byteSize) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.ScalarNode {
 		return fmt.Errorf("expected a size, but got %s", node.Tag)
-	}
-
-	if node.Tag == "!!int" {
-		var parsed uint64
-		if err := node.Decode(&parsed); err != nil {
-			return types.ErrByteSizeInvalid
-		}
-		*size = byteSize(parsed)
-		return nil
 	}
 
 	return size.Set(node.Value)

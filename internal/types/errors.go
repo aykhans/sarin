@@ -19,6 +19,8 @@ var (
 	ErrRemoteFileTooLarge = errors.New("remote file exceeds " + FormatByteSize(RemoteFetchLimit))
 
 	ErrResponseBodyTooLarge = errors.New("response body exceeds the body limit")
+
+	ErrYAMLMultipleDocuments = errors.New("expected a single YAML document, but found more than one")
 )
 
 type FieldParseError struct {
@@ -305,6 +307,27 @@ func (e CLIUnexpectedArgsError) Error() string {
 }
 
 // ======================================== Config File ========================================
+
+// ConfigFileError names the file a parse error came from, which nested configFile chains lose.
+type ConfigFileError struct {
+	Path  string
+	error error
+}
+
+func NewConfigFileError(path string, err error) ConfigFileError {
+	if err == nil {
+		err = errNoError
+	}
+	return ConfigFileError{path, err}
+}
+
+func (e ConfigFileError) Error() string {
+	return e.error.Error()
+}
+
+func (e ConfigFileError) Unwrap() error {
+	return e.error
+}
 
 type ConfigFileReadError struct {
 	error error

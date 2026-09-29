@@ -652,12 +652,19 @@ func ReadAllConfigs() *Config {
 
 	for _, configFile := range append(envConfig.Files, cliConf.Files...) {
 		fileConfig, err := parseConfigFile(configFile, 10)
+
+		// A nested configFile fails under its own name, not the one given on the command line.
+		path := configFile.Path()
+		if configFileErr, ok := errors.AsType[types.ConfigFileError](err); ok {
+			path = configFileErr.Path
+		}
+
 		_ = utilsErr.MustHandle(err,
 			utilsErr.OnType(func(err types.ConfigFileReadError) error {
 				cliParser.PrintHelp()
 				fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 					StyleYellow.Render(
-						fmt.Sprintf("\nFailed to read config file (%s): ", configFile.Path())+err.Error(),
+						fmt.Sprintf("\nFailed to read config file (%s): ", path)+err.Error(),
 					),
 				))
 				os.Exit(1)
@@ -666,14 +673,14 @@ func ReadAllConfigs() *Config {
 			utilsErr.OnType(func(err types.UnmarshalError) error {
 				fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 					StyleYellow.Render(
-						fmt.Sprintf("\nFailed to parse config file (%s): ", configFile.Path())+err.Error(),
+						fmt.Sprintf("\nFailed to parse config file (%s): ", path)+err.Error(),
 					),
 				))
 				os.Exit(1)
 				return nil
 			}),
 			utilsErr.OnType(func(err types.FieldParseErrors) error {
-				printParseErrors(fmt.Sprintf("CONFIG FILE '%s'", configFile.Path()), err.Errors...)
+				printParseErrors(fmt.Sprintf("CONFIG FILE '%s'", path), err.Errors...)
 				os.Exit(1)
 				return nil
 			}),
@@ -697,7 +704,7 @@ func parseConfigFile(configFile types.ConfigFile, maxDepth int) (*Config, error)
 	configFileParser := NewConfigFileParser(configFile)
 	fileConfig, err := configFileParser.Parse()
 	if err != nil {
-		return nil, err
+		return nil, types.NewConfigFileError(configFile.Path(), err)
 	}
 
 	if maxDepth <= 0 {
