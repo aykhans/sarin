@@ -311,7 +311,7 @@ func NewSarin(
 		logFile:           logFile,
 		hostClients:       hostClients,
 		scriptHTTPClients: scriptHTTPClients,
-		fileCache:         NewFileCache(time.Second * 10),
+		fileCache:         NewFileCache(time.Second * 30),
 		scriptChain:       scriptChain,
 	}
 

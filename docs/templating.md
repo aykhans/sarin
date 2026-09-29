@@ -4,7 +4,7 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
 
 > **Note:** Templating in URL host and scheme is not supported. Only the path portion of the URL can contain templates.
 
-> **Note:** Template rendering happens before the request is sent. The request timeout (`-T` / `timeout`) only governs the HTTP request itself and starts _after_ templates have finished rendering, so slow template functions (e.g. captcha solvers, remote `file_Read`) cannot cause a request timeout no matter how long they take.
+> **Note:** Template rendering happens before the request is sent. The request timeout (`-T` / `timeout`) only governs the HTTP request itself and starts _after_ templates have finished rendering, so slow template functions (e.g. captcha solvers, remote `file_Read`) cannot cause a request timeout no matter how long they take. Downloads have their own limits: 30 seconds and 64MiB per file.
 
 ## Table of Contents
 
