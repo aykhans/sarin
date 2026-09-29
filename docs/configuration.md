@@ -609,8 +609,11 @@ Unknown options and values of the wrong type raise an error.
 | `header(name)` | First value of a header, case-insensitive; `nil`/`null` if missing |
 | `cookie(name)` | Value of a cookie from `Set-Cookie`; `nil`/`null` if missing       |
 | `json()`       | JavaScript only: parses the body as JSON                           |
+| `bytes()`      | JavaScript only: the body as a `Uint8Array`                        |
 
 In Lua, call the helpers as `res:header("name")` or `res.header("name")`.
+
+> **Note:** JavaScript strings hold UTF-16, so `body` replaces bytes that are not valid UTF-8 and `body.length` counts code units rather than bytes. Use `bytes()` for binary responses and for the real byte count. Lua strings keep the bytes as they arrived.
 
 **Behavior:**
 

@@ -159,6 +159,16 @@ func (e *JsEngine) httpResponseToObject(resp *HTTPResponse) *goja.Object {
 		}
 		return value
 	})
+	// body is a JavaScript string, so bytes that are not valid UTF-8 reach the script
+	// only through this.
+	_ = obj.Set("bytes", func(goja.FunctionCall) goja.Value {
+		buffer := rt.NewArrayBuffer([]byte(resp.Body))
+		value, err := rt.New(rt.Get("Uint8Array").ToObject(rt), rt.ToValue(buffer))
+		if err != nil {
+			panic(err)
+		}
+		return value
+	})
 
 	return obj
 }
