@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -235,8 +236,10 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 		parsedData = &configYAML{}
 	)
 
-	err := yaml.Unmarshal(data, &parsedData)
-	if err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	// The decoder returns a bare io.EOF for an empty file, errors.Is would also match a wrapped one.
+	if err := decoder.Decode(parsedData); err != nil && err != io.EOF { //nolint:errorlint
 		return nil, types.NewUnmarshalError(err)
 	}
 
