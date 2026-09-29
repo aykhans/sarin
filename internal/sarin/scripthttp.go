@@ -59,6 +59,8 @@ func newScriptHTTPClient(
 			DialTimeout:         dialWithDeadline(dial),
 			MaxConnsPerHost:     safeUintToInt(maxConns),
 			MaxResponseBodySize: safeUint64ToInt(maxResponseBody),
+			// Retries would send one script call several times and hide it from the results.
+			MaxIdemponentCallAttempts: 1,
 			TLSConfig: &tls.Config{
 				InsecureSkipVerify: insecure, //nolint:gosec
 			},
