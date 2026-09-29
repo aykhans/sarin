@@ -56,11 +56,11 @@ func newScriptHTTPClient(
 		// Read and write timeouts stay unset because they would cap the per-call timeout,
 		// so dialWithDeadline is what bounds the TLS handshake.
 		return &fasthttp.Client{
-			DialTimeout:         dialWithDeadline(dial),
-			MaxConnsPerHost:     safeUintToInt(maxConns),
-			MaxResponseBodySize: safeUint64ToInt(maxResponseBody),
-			// Retries would send one script call several times and hide it from the results.
+			DialTimeout:               dialWithDeadline(dial),
+			MaxConnsPerHost:           safeUintToInt(maxConns),
+			MaxResponseBodySize:       safeUint64ToInt(maxResponseBody),
 			MaxIdemponentCallAttempts: 1,
+			ReadBufferSize:            64 << 10, // 64 KiB
 			TLSConfig: &tls.Config{
 				InsecureSkipVerify: insecure, //nolint:gosec
 			},

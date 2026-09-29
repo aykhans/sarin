@@ -61,6 +61,7 @@ func NewHostClients(
 				ReadTimeout:                   timeout,
 				MaxResponseBodySize:           safeUint64ToInt(maxResponseBody),
 				MaxIdemponentCallAttempts:     1,
+				ReadBufferSize:                64 << 10, // 64 KiB
 				DisableHeaderNamesNormalizing: true,
 				DisablePathNormalizing:        true,
 				NoDefaultUserAgentHeader:      true,
@@ -85,6 +86,7 @@ func NewHostClients(
 		ReadTimeout:                   timeout,
 		MaxResponseBodySize:           safeUint64ToInt(maxResponseBody),
 		MaxIdemponentCallAttempts:     1,
+		ReadBufferSize:                64 << 10, // 64 KiB
 		DisableHeaderNamesNormalizing: true,
 		DisablePathNormalizing:        true,
 		NoDefaultUserAgentHeader:      true,
