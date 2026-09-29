@@ -117,21 +117,6 @@ func (e *JsEngine) parseHTTPOptions(opts *goja.Object, req *HTTPRequest) error {
 			if req.MaxRedirects, err = parseHTTPMaxRedirects(count); err != nil {
 				return err
 			}
-		case httpOptionMaxBodySize:
-			var err error
-			switch size := value.Export().(type) {
-			case string:
-				req.MaxBodySize, err = parseHTTPMaxBodySizeString(size)
-			default:
-				number, ok := numberValue(value)
-				if !ok {
-					return types.NewScriptHTTPOptionError(name, types.NewScriptTypeError("number or size string", jsTypeName(value)))
-				}
-				req.MaxBodySize, err = parseHTTPMaxBodySize(number)
-			}
-			if err != nil {
-				return err
-			}
 		default:
 			return types.NewScriptHTTPOptionError(name, types.ErrScriptHTTPUnknownOption)
 		}

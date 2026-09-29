@@ -34,10 +34,3 @@ func safeUint64ToInt(u uint64) int {
 	}
 	return int(u)
 }
-
-func safeInt64ToInt(i int64) int {
-	if i > math.MaxInt {
-		return math.MaxInt
-	}
-	return int(i)
-}

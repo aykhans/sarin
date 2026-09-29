@@ -21,7 +21,6 @@ type HTTPRequest struct {
 	Timeout      time.Duration // zero means the doer's default timeout
 	Insecure     bool
 	MaxRedirects int
-	MaxBodySize  *int64 // nil takes the doer default, zero means no limit
 }
 
 // HTTPResponse is the response returned to a script by the http.* functions.
@@ -67,9 +66,6 @@ const httpDefaultMethod = http.MethodGet
 // httpMaxRedirectsLimit is the highest maxRedirects a script may ask for.
 const httpMaxRedirectsLimit = 100
 
-// httpMaxBodySizeLimit is the highest maxBodySize a script may ask for.
-const httpMaxBodySizeLimit int64 = types.ByteSizeLimit
-
 // Option keys accepted by the http function.
 const (
 	httpOptionMethod       = "method"
@@ -80,7 +76,6 @@ const (
 	httpOptionTimeout      = "timeout"
 	httpOptionInsecure     = "insecure"
 	httpOptionMaxRedirects = "maxRedirects"
-	httpOptionMaxBodySize  = "maxBodySize"
 )
 
 // httpBridge connects http to the doer. Calls only work while transform runs.
@@ -121,41 +116,6 @@ func parseHTTPMaxRedirects(count float64) (int, error) {
 		)
 	}
 	return int(count), nil
-}
-
-// parseHTTPMaxBodySize checks that the body limit is a non-negative whole number.
-// It can return the following errors:
-//   - types.ScriptHTTPOptionError
-func parseHTTPMaxBodySize(size float64) (*int64, error) {
-	if math.IsNaN(size) || size < 0 || size > float64(httpMaxBodySizeLimit) || size != math.Trunc(size) {
-		return nil, types.NewScriptHTTPOptionError(
-			httpOptionMaxBodySize,
-			types.NewScriptTypeError(
-				"a whole number of bytes between 0 and "+strconv.FormatInt(httpMaxBodySizeLimit, 10),
-				strconv.FormatFloat(size, 'f', -1, 64),
-			),
-		)
-	}
-	limit := int64(size)
-	return &limit, nil
-}
-
-// parseHTTPMaxBodySizeString reads a body limit written with a unit, such as "10MiB".
-// It can return the following errors:
-//   - types.ScriptHTTPOptionError
-func parseHTTPMaxBodySizeString(value string) (*int64, error) {
-	size, err := types.ParseByteSize(value)
-	if err != nil {
-		return nil, types.NewScriptHTTPOptionError(httpOptionMaxBodySize, err)
-	}
-	if size > uint64(httpMaxBodySizeLimit) {
-		return nil, types.NewScriptHTTPOptionError(
-			httpOptionMaxBodySize,
-			types.NewScriptTypeError("a size up to "+types.FormatByteSize(uint64(httpMaxBodySizeLimit)), value),
-		)
-	}
-	limit := int64(size)
-	return &limit, nil
 }
 
 // parseHTTPTimeout parses a Go duration string such as "500ms" or "2s".

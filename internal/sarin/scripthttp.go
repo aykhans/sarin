@@ -6,8 +6,6 @@ import (
 	"errors"
 	"net"
 	"net/url"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -18,26 +16,11 @@ import (
 // scriptHTTPDefaultTimeout is the default timeout for script requests, independent of -T.
 const scriptHTTPDefaultTimeout = 30 * time.Second
 
-// scriptHTTPDefaultMaxBodySize is the default body limit for script requests,
-// independent of the max response body config.
-const scriptHTTPDefaultMaxBodySize = 10 << 20 // 10 MiB
-
-// scriptHTTPMaxClients bounds the client cache, since each one holds a connection pool.
-const scriptHTTPMaxClients = 16
-
-// scriptHTTPClientKey picks the client a request needs, since fasthttp takes the body
-// limit per client rather than per request.
-type scriptHTTPClientKey struct {
-	insecure    bool
-	maxBodySize int
-}
-
 // scriptHTTPClient sends scripts' http.* requests. It is safe for concurrent use.
 type scriptHTTPClient struct {
 	ctx            context.Context //nolint:containedctx
-	newClient      func(key scriptHTTPClientKey) *fasthttp.Client
-	clients        sync.Map
-	clientCount    atomic.Int64
+	client         *fasthttp.Client
+	insecureClient *fasthttp.Client
 	defaultTimeout time.Duration
 }
 
@@ -46,9 +29,9 @@ var _ script.HTTPDoer = (*scriptHTTPClient)(nil)
 // newScriptHTTPClients creates one client per proxy, in the same order as NewHostClients.
 // It can return the following errors:
 //   - types.ProxyDialError
-func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint) ([]*scriptHTTPClient, error) {
+func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint, maxResponseBody uint64) ([]*scriptHTTPClient, error) {
 	if len(proxies) == 0 {
-		return []*scriptHTTPClient{newScriptHTTPClient(ctx, fasthttp.DialDualStackTimeout, scriptHTTPDefaultTimeout, maxConns)}, nil
+		return []*scriptHTTPClient{newScriptHTTPClient(ctx, fasthttp.DialDualStackTimeout, scriptHTTPDefaultTimeout, maxConns, maxResponseBody)}, nil
 	}
 
 	clients := make([]*scriptHTTPClient, 0, len(proxies))
@@ -57,40 +40,40 @@ func newScriptHTTPClients(ctx context.Context, proxies []url.URL, maxConns uint)
 		if err != nil {
 			return nil, types.NewProxyDialError(proxy.String(), err)
 		}
-		clients = append(clients, newScriptHTTPClient(ctx, dial, scriptHTTPDefaultTimeout, maxConns))
+		clients = append(clients, newScriptHTTPClient(ctx, dial, scriptHTTPDefaultTimeout, maxConns, maxResponseBody))
 	}
 	return clients, nil
 }
 
-func newScriptHTTPClient(ctx context.Context, dial fasthttp.DialFuncWithTimeout, defaultTimeout time.Duration, maxConns uint) *scriptHTTPClient {
+func newScriptHTTPClient(
+	ctx context.Context,
+	dial fasthttp.DialFuncWithTimeout,
+	defaultTimeout time.Duration,
+	maxConns uint,
+	maxResponseBody uint64,
+) *scriptHTTPClient {
+	newClient := func(insecure bool) *fasthttp.Client {
+		// Read and write timeouts stay unset because they would cap the per-call timeout,
+		// so dialWithDeadline is what bounds the TLS handshake.
+		return &fasthttp.Client{
+			DialTimeout:         dialWithDeadline(dial),
+			MaxConnsPerHost:     safeUintToInt(maxConns),
+			MaxResponseBodySize: safeUint64ToInt(maxResponseBody),
+			TLSConfig: &tls.Config{
+				InsecureSkipVerify: insecure, //nolint:gosec
+			},
+			DisableHeaderNamesNormalizing: true,
+			DisablePathNormalizing:        true,
+			NoDefaultUserAgentHeader:      true,
+		}
+	}
+
 	return &scriptHTTPClient{
-		ctx: ctx,
-		newClient: func(key scriptHTTPClientKey) *fasthttp.Client {
-			// Read and write timeouts stay unset because they would cap the per-call timeout,
-			// so dialWithDeadline is what bounds the TLS handshake.
-			return &fasthttp.Client{
-				DialTimeout:         dialWithDeadline(dial),
-				MaxConnsPerHost:     safeUintToInt(maxConns),
-				MaxResponseBodySize: key.maxBodySize,
-				TLSConfig: &tls.Config{
-					InsecureSkipVerify: key.insecure, //nolint:gosec
-				},
-				DisableHeaderNamesNormalizing: true,
-				DisablePathNormalizing:        true,
-				NoDefaultUserAgentHeader:      true,
-			}
-		},
+		ctx:            ctx,
+		client:         newClient(false),
+		insecureClient: newClient(true),
 		defaultTimeout: defaultTimeout,
 	}
-}
-
-// scriptHTTPBodyLimit resolves the limit a request is read with, where a request
-// without one takes the default and zero means no limit.
-func scriptHTTPBodyLimit(maxBodySize *int64) int {
-	if maxBodySize == nil {
-		return scriptHTTPDefaultMaxBodySize
-	}
-	return safeInt64ToInt(*maxBodySize)
 }
 
 // dialWithDeadline dials within the request timeout and keeps it as the connection deadline,
@@ -163,8 +146,10 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 		timeout = c.defaultTimeout
 	}
 
-	limit := scriptHTTPBodyLimit(r.MaxBodySize)
-	client := c.clientFor(r.Insecure, limit)
+	client := c.client
+	if r.Insecure {
+		client = c.insecureClient
+	}
 
 	req.SetTimeout(timeout)
 	if r.MaxRedirects > 0 {
@@ -186,24 +171,4 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 		Headers: collectRespHeaders(resp),
 		Body:    string(body),
 	}, nil
-}
-
-// clientFor returns the client enforcing maxBodySize, building it once.
-func (c *scriptHTTPClient) clientFor(insecure bool, maxBodySize int) *fasthttp.Client {
-	key := scriptHTTPClientKey{insecure: insecure, maxBodySize: maxBodySize}
-	if client, ok := c.clients.Load(key); ok {
-		return client.(*fasthttp.Client) //nolint:forcetypeassert
-	}
-
-	client := c.newClient(key)
-	// A script that varies its limit would otherwise grow the cache without end.
-	if c.clientCount.Load() >= scriptHTTPMaxClients {
-		return client
-	}
-
-	stored, loaded := c.clients.LoadOrStore(key, client)
-	if !loaded {
-		c.clientCount.Add(1)
-	}
-	return stored.(*fasthttp.Client) //nolint:forcetypeassert
 }
