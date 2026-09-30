@@ -2,6 +2,7 @@ package script
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
 
@@ -46,8 +47,7 @@ func NewJsEngine(scriptContent string) (*JsEngine, error) {
 	}
 
 	// Execute the script to define the transform function
-	_, err := vm.RunString(scriptContent)
-	if err != nil {
+	if _, err := vm.RunString(scriptContent); err != nil {
 		return nil, types.NewScriptExecutionError("JavaScript", engine.exceptionError(err))
 	}
 
@@ -163,6 +163,7 @@ func (e *JsEngine) objectToRequestData(val goja.Value, req *RequestData) error {
 
 	// Reading a field runs the script's own getters and toString, which throw as a Go
 	// panic outside goja's execution context, so the whole read runs inside Try.
+	var fieldErr error
 	if thrown := e.runtime.Try(func() {
 		// Method
 		if v := obj.Get("method"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
@@ -181,23 +182,49 @@ func (e *JsEngine) objectToRequestData(val goja.Value, req *RequestData) error {
 
 		// Headers
 		if v := obj.Get("headers"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-			req.Headers = e.objectToStringSliceMap(v.ToObject(e.runtime))
+			values, err := objectField("headers", v)
+			if err != nil {
+				fieldErr = err
+				return
+			}
+			req.Headers = e.objectToStringSliceMap(values)
 		}
 
 		// Params
 		if v := obj.Get("params"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-			req.Params = e.objectToStringSliceMap(v.ToObject(e.runtime))
+			values, err := objectField("params", v)
+			if err != nil {
+				fieldErr = err
+				return
+			}
+			req.Params = e.objectToStringSliceMap(values)
 		}
 
 		// Cookies
 		if v := obj.Get("cookies"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-			req.Cookies = e.objectToStringSliceMap(v.ToObject(e.runtime))
+			values, err := objectField("cookies", v)
+			if err != nil {
+				fieldErr = err
+				return
+			}
+			req.Cookies = e.objectToStringSliceMap(values)
 		}
 	}); thrown != nil {
 		return e.exceptionError(thrown)
 	}
 
-	return nil
+	return fieldErr
+}
+
+// objectField rejects anything that is not a plain object, since reading keys off an
+// array or a boxed string yields headers named after indexes and off a Date yields none.
+// A Map, a Set and a typed array still pass, so the field is emptied rather than refused.
+func objectField(name string, value goja.Value) (*goja.Object, error) {
+	obj, ok := value.(*goja.Object)
+	if !ok || obj.ClassName() != "Object" {
+		return nil, fmt.Errorf("%s must be an object", name)
+	}
+	return obj, nil
 }
 
 // stringSliceToArray converts a Go []string to a JavaScript array.
@@ -270,8 +297,8 @@ func jsStringValue(v goja.Value) (string, bool) {
 }
 
 // isGeneratorFunction reports whether a function is declared with a star.
-// The name comes from the script's own prototype chain, so it is a hint, not a guarantee.
-// Every read here can run a script getter, so the whole walk stays inside Try.
+// The name comes from the script's own prototype chain, so a script can falsify it either way.
+// Reading it can run a script getter, so the whole walk stays inside Try.
 func isGeneratorFunction(runtime *goja.Runtime, value goja.Value) bool {
 	var name string
 	thrown := runtime.Try(func() {
