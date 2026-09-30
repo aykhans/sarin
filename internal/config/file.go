@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -137,7 +138,7 @@ func (ss *stringOrSliceField) UnmarshalYAML(node *yaml.Node) error {
 		*ss = slice
 		return nil
 	default:
-		return fmt.Errorf("expected a string or a sequence of strings, but got %v", node.Kind)
+		return fmt.Errorf("expected a string or a sequence of strings, but got %s", yamlNodeName(node))
 	}
 }
 
@@ -158,7 +159,7 @@ func (kv *keyValuesField) UnmarshalYAML(node *yaml.Node) error {
 		// Handle sequence of maps: [{key1: value1}, {key2: value2}]
 		for _, item := range node.Content {
 			if item.Kind != yaml.MappingNode {
-				return fmt.Errorf("expected a mapping in sequence, but got %v", item.Kind)
+				return fmt.Errorf("expected a mapping in sequence, but got %s", yamlNodeName(item))
 			}
 			if err := kv.unmarshalMapping(item); err != nil {
 				return err
@@ -166,7 +167,7 @@ func (kv *keyValuesField) UnmarshalYAML(node *yaml.Node) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("expected a mapping or sequence of mappings, but got %v", node.Kind)
+		return fmt.Errorf("expected a mapping or sequence of mappings, but got %s", yamlNodeName(node))
 	}
 }
 
@@ -177,7 +178,7 @@ func (kv *keyValuesField) unmarshalMapping(node *yaml.Node) error {
 		valueNode := node.Content[i+1]
 
 		if keyNode.Kind != yaml.ScalarNode {
-			return fmt.Errorf("expected a string key, but got %v", keyNode.Kind)
+			return fmt.Errorf("expected a string key, but got %s", yamlNodeName(keyNode))
 		}
 
 		key := keyNode.Value
@@ -189,12 +190,12 @@ func (kv *keyValuesField) unmarshalMapping(node *yaml.Node) error {
 		case yaml.SequenceNode:
 			for _, v := range valueNode.Content {
 				if v.Kind != yaml.ScalarNode {
-					return fmt.Errorf("expected string values in array for key %q, but got %v", key, v.Kind)
+					return fmt.Errorf("expected string values in array for key %q, but got %s", key, yamlNodeName(v))
 				}
 				values = append(values, v.Value)
 			}
 		default:
-			return fmt.Errorf("expected a string or array of strings for key %q, but got %v", key, valueNode.Kind)
+			return fmt.Errorf("expected a string or array of strings for key %q, but got %s", key, yamlNodeName(valueNode))
 		}
 
 		*kv = append(*kv, types.KeyValue[string, []string]{Key: key, Value: values})
@@ -246,11 +247,18 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 	}
 
 	// Decode reads one document, so anything after the first "---" would be dropped silently.
-	switch err := decoder.Decode(&yaml.Node{}); {
-	case err == nil:
-		return nil, types.NewUnmarshalError(types.ErrYAMLMultipleDocuments)
-	case err != io.EOF: //nolint:errorlint
-		return nil, types.NewUnmarshalError(yamlError(err))
+	for {
+		var next yaml.Node
+		err := decoder.Decode(&next)
+		if err == io.EOF { //nolint:errorlint
+			break
+		}
+		if err != nil {
+			return nil, types.NewUnmarshalError(yamlError(err))
+		}
+		if !isEmptyDocument(&next) {
+			return nil, types.NewUnmarshalError(types.ErrYAMLMultipleDocuments)
+		}
 	}
 
 	var fieldParseErrors []types.FieldParseError
@@ -329,33 +337,182 @@ func (parser ConfigFileParser) ParseYAML(data []byte) (*Config, error) {
 // configYAMLTypeName is the Go type name the yaml package puts in its messages.
 var configYAMLTypeName = reflect.TypeFor[configYAML]().String()
 
-// yamlError rewrites yaml decode errors so they name config keys instead of Go types.
+// isEmptyDocument reports whether a document holds nothing, which a trailing "---" produces.
+// A null tag alone is not enough, since a user can hang it on a mapping that does hold content.
+func isEmptyDocument(node *yaml.Node) bool {
+	if len(node.Content) == 0 {
+		return true
+	}
+	root := node.Content[0]
+	return root.Kind == yaml.ScalarNode && root.Tag == "!!null"
+}
+
+// yamlError rewrites yaml decode errors so they read like config file errors.
+// Errors from building the config arrive collected, everything earlier arrives on its own.
 func yamlError(err error) error {
 	var loadErrors *yaml.LoadErrors
-	if !errors.As(err, &loadErrors) || len(loadErrors.Errors) == 0 {
-		return err
+	if errors.As(err, &loadErrors) && len(loadErrors.Errors) > 0 {
+		var builder strings.Builder
+		for i, loadError := range loadErrors.Errors {
+			if i > 0 {
+				builder.WriteString("\n")
+			}
+			builder.WriteString(yamlErrorText(loadError))
+		}
+		return errors.New(builder.String())
 	}
 
+	if loadError, ok := errors.AsType[*yaml.LoadError](err); ok {
+		return errors.New(yamlErrorText(loadError))
+	}
+
+	return err
+}
+
+// yamlErrorText renders one error as "line 3: while scanning a plain scalar: found a tab character".
+// The mark is where reading gave up and the context mark starts the construct that broke.
+func yamlErrorText(loadError *yaml.LoadError) string {
 	var builder strings.Builder
-	for i, loadError := range loadErrors.Errors {
-		if i > 0 {
-			builder.WriteString("\n")
-		}
-		if loadError.Mark.Line > 0 {
-			fmt.Fprintf(&builder, "line %d: ", loadError.Mark.Line)
-		}
-		builder.WriteString(yamlErrorMessage(loadError.Message))
+	if loadError.Mark.Line > 0 {
+		fmt.Fprintf(&builder, "line %d: ", loadError.Mark.Line)
+	}
+	if loadError.ContextMsg != "" {
+		builder.WriteString(loadError.ContextMsg + ": ")
+	}
+	builder.WriteString(yamlErrorMessage(loadError.Message))
+
+	start := loadError.ContextMark
+	if loadError.ContextMsg != "" && start.Line > 0 && start.Line != loadError.Mark.Line {
+		fmt.Fprintf(&builder, " (started at line %d)", start.Line)
 	}
 
-	return errors.New(builder.String())
+	return builder.String()
+}
+
+// yamlTypeNames maps the Go types and YAML tags the yaml package prints to words a user knows.
+var yamlTypeNames = map[string]string{
+	"!!str":            "text",
+	"!!int":            "a number",
+	"!!float":          "a number",
+	"!!bool":           "true or false",
+	"!!seq":            "a list",
+	"!!map":            "a mapping",
+	"!!null":           "an empty value",
+	"!!timestamp":      "a date",
+	"!!binary":         "binary data",
+	"string":           "text",
+	"bool":             "true or false",
+	"uint":             "a whole number of 0 or more",
+	"uint64":           "a whole number of 0 or more",
+	"time.Duration":    "a duration such as 10s",
+	configYAMLTypeName: "a mapping of config keys",
+}
+
+// yamlNodeName names what a node holds, so an error can say "a list" instead of a kind number.
+// A tag that contradicts the shape is kept, since the shape alone would read as a contradiction.
+func yamlNodeName(node *yaml.Node) string {
+	if name, ok := yamlTypeNames[node.Tag]; ok && yamlTagKind(node.Tag) == node.Kind {
+		return name
+	}
+	if node.Tag == "" {
+		return yamlKindName(node.Kind)
+	}
+	return yamlKindName(node.Kind) + " tagged " + node.Tag
+}
+
+// yamlTagKind returns the node shape a tag belongs on, so a mismatch can be spotted.
+func yamlTagKind(tag string) yaml.Kind {
+	switch tag {
+	case "!!seq":
+		return yaml.SequenceNode
+	case "!!map":
+		return yaml.MappingNode
+	default:
+		return yaml.ScalarNode
+	}
+}
+
+// yamlKindName names a node by its shape, for when its tag says nothing a user would know.
+func yamlKindName(kind yaml.Kind) string {
+	switch kind {
+	case yaml.SequenceNode:
+		return "a list"
+	case yaml.MappingNode:
+		return "a mapping"
+	case yaml.AliasNode:
+		return "an alias"
+	default:
+		return "a value"
+	}
 }
 
 // yamlErrorMessage turns "field x not found in type config.configYAML" into "unknown key "x"".
 func yamlErrorMessage(message string) string {
-	if field, ok := strings.CutPrefix(message, "field "); ok {
-		if name, _, ok := strings.Cut(field, " not found in type "); ok {
+	if field, ok := strings.CutSuffix(message, " not found in type "+configYAMLTypeName); ok {
+		if name, ok := strings.CutPrefix(field, "field "); ok {
 			return fmt.Sprintf("unknown key %q", name)
 		}
 	}
+
+	// The user controls the value, so the rightmost separator is the only one that is ours.
+	// After "as a" comes the tag the user wrote, after "into" comes the type the key accepts.
+	if names, ok := strings.CutPrefix(message, "cannot construct "); ok {
+		at, width, tagged := -1, 0, false
+		for index, separator := range []string{" into ", " as a "} {
+			if found := strings.LastIndex(names, separator); found > at {
+				at, width, tagged = found, len(separator), index == 1
+			}
+		}
+		if at >= 0 {
+			got, want := yamlGotName(names[:at]), yamlWantedName(names[at+width:])
+			if tagged {
+				return fmt.Sprintf("%s is not %s", got, want)
+			}
+			return fmt.Sprintf("expected %s, but got %s", want, got)
+		}
+	}
+
 	return strings.ReplaceAll(message, configYAMLTypeName, "the config file")
+}
+
+// yamlWantedName names what a key accepts, which the yaml package prints as a Go type.
+func yamlWantedName(text string) string {
+	if name, ok := yamlTypeNames[text]; ok {
+		return name
+	}
+	return text
+}
+
+// yamlGotName names what the file held, which the yaml package prints as a tag and sometimes a value.
+// A tag the user would not know stays in the text, since without it the message reads as nonsense.
+func yamlGotName(text string) string {
+	// A collection tag carries no backticks, so a scalar wearing one arrives glued to it.
+	for _, tag := range []string{"!!seq", "!!map"} {
+		if value, ok := strings.CutPrefix(text, tag); ok && value != "" {
+			return yamlValueText(value) + " tagged " + tag
+		}
+	}
+
+	tag, value, _ := strings.Cut(text, " ")
+	value = strings.TrimSuffix(strings.TrimPrefix(value, "`"), "`")
+
+	name, known := yamlTypeNames[tag]
+	switch {
+	case known && value != "":
+		return yamlValueText(value)
+	case known:
+		return name
+	case value != "":
+		return yamlValueText(value) + " tagged " + tag
+	default:
+		return "a value tagged " + tag
+	}
+}
+
+// yamlValueText quotes a value, saying so when the yaml package shortened it to seven characters.
+func yamlValueText(value string) string {
+	if start, ok := strings.CutSuffix(value, "..."); ok && len(start) == 7 {
+		return "a value starting with " + strconv.Quote(start)
+	}
+	return strconv.Quote(value)
 }

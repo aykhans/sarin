@@ -696,7 +696,7 @@ func ReadAllConfigs() *Config {
 
 // parseConfigFile recursively parses a config file and its nested files up to maxDepth levels.
 // Returns the merged configuration or an error if parsing fails.
-// It can return the following errors:
+// It can return the following errors, each wrapped in a types.ConfigFileError naming the file:
 // - types.ConfigFileReadError
 // - types.UnmarshalError
 // - types.FieldParseErrors
