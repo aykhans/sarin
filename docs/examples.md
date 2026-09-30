@@ -1193,21 +1193,6 @@ js: |
     }
 ```
 
-**Follow redirects and use a slower timeout for a login endpoint:**
-
-```sh
-sarin -U http://example.com/api/me -r 200 -c 5 \
-  -lua 'function transform(req)
-    local res = http("http://example.com/login", {
-      method = "POST",
-      maxRedirects = 5,
-      timeout = "10s",
-    })
-    req.cookies["session"] = res:cookie("session")
-    return req
-  end'
-```
-
 **Keep sending the main request even when the extra call fails:**
 
 A failed `http` call raises an error, which skips the main request and records the failure in the results. Catch it to decide yourself:
