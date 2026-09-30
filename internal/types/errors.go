@@ -434,6 +434,7 @@ var (
 	ErrScriptSourceEmpty           = errors.New("script source cannot be empty after @")
 	ErrScriptTransformMissing      = errors.New("script must define a global 'transform' function")
 	ErrScriptTransformReturnObject = errors.New("transform function must return an object")
+	ErrScriptTransformAsync        = errors.New("transform function must be synchronous, async and generator functions are not supported")
 	ErrScriptURLNoHost             = errors.New("script URL must have a host")
 	ErrScriptHTTPOutsideTransform  = errors.New("http functions can only be called while transform is running")
 	ErrScriptHTTPUnavailable       = errors.New("http client is not available")

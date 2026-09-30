@@ -2,6 +2,7 @@ package script
 
 import (
 	"errors"
+	"reflect"
 	"strconv"
 
 	"github.com/dop251/goja"
@@ -17,6 +18,9 @@ type JsEngine struct {
 	errorConstructor goja.Value
 	http             httpBridge
 }
+
+// promiseType is what a transform returns when it is declared async or as a generator.
+var promiseType = reflect.TypeFor[*goja.Promise]()
 
 // NewJsEngine creates a new JavaScript script engine with the given script content.
 // The script must define a global `transform` function that takes a request object
@@ -58,6 +62,12 @@ func NewJsEngine(scriptContent string) (*JsEngine, error) {
 		return nil, types.NewScriptExecutionError("JavaScript", errors.New("'transform' must be a function"))
 	}
 
+	// A generator returns an iterator, which is an ordinary object to Go, so the
+	// call cannot tell it apart and the declaration is the only thing left to read.
+	if isGeneratorFunction(vm, transformVal) {
+		return nil, types.ErrScriptTransformAsync
+	}
+
 	engine.transform = transform
 
 	return engine, nil
@@ -82,6 +92,13 @@ func (e *JsEngine) Transform(req *RequestData) error {
 	result, err := e.transform(goja.Undefined(), reqObj)
 	if err != nil {
 		return types.NewScriptExecutionError("JavaScript", e.exceptionError(err))
+	}
+
+	// An async or generator transform returns a promise nothing ever awaits, and a promise
+	// carries none of the request fields, so the request would go out untransformed.
+	// ExportType reads the type alone, while Export would run every getter on the result.
+	if result.ExportType() == promiseType {
+		return types.ErrScriptTransformAsync
 	}
 
 	// Update RequestData from the returned object
@@ -144,34 +161,40 @@ func (e *JsEngine) objectToRequestData(val goja.Value, req *RequestData) error {
 		return types.ErrScriptTransformReturnObject
 	}
 
-	// Method
-	if v := obj.Get("method"); v != nil && !goja.IsUndefined(v) {
-		req.Method = v.String()
-	}
+	// Reading a field runs the script's own getters and toString, which throw as a Go
+	// panic outside goja's execution context, so the whole read runs inside Try.
+	if thrown := e.runtime.Try(func() {
+		// Method
+		if v := obj.Get("method"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Method = v.String()
+		}
 
-	// Path
-	if v := obj.Get("path"); v != nil && !goja.IsUndefined(v) {
-		req.Path = v.String()
-	}
+		// Path
+		if v := obj.Get("path"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Path = v.String()
+		}
 
-	// Body
-	if v := obj.Get("body"); v != nil && !goja.IsUndefined(v) {
-		req.Body = v.String()
-	}
+		// Body
+		if v := obj.Get("body"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Body = v.String()
+		}
 
-	// Headers
-	if v := obj.Get("headers"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		req.Headers = e.objectToStringSliceMap(v.ToObject(e.runtime))
-	}
+		// Headers
+		if v := obj.Get("headers"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Headers = e.objectToStringSliceMap(v.ToObject(e.runtime))
+		}
 
-	// Params
-	if v := obj.Get("params"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		req.Params = e.objectToStringSliceMap(v.ToObject(e.runtime))
-	}
+		// Params
+		if v := obj.Get("params"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Params = e.objectToStringSliceMap(v.ToObject(e.runtime))
+		}
 
-	// Cookies
-	if v := obj.Get("cookies"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		req.Cookies = e.objectToStringSliceMap(v.ToObject(e.runtime))
+		// Cookies
+		if v := obj.Get("cookies"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Cookies = e.objectToStringSliceMap(v.ToObject(e.runtime))
+		}
+	}); thrown != nil {
+		return e.exceptionError(thrown)
 	}
 
 	return nil
@@ -244,4 +267,30 @@ func jsStringValue(v goja.Value) (string, bool) {
 		return "", false
 	}
 	return v.String(), true
+}
+
+// isGeneratorFunction reports whether a function is declared with a star.
+// The name comes from the script's own prototype chain, so it is a hint, not a guarantee.
+// Every read here can run a script getter, so the whole walk stays inside Try.
+func isGeneratorFunction(runtime *goja.Runtime, value goja.Value) bool {
+	var name string
+	thrown := runtime.Try(func() {
+		obj := value.ToObject(runtime)
+		if obj == nil {
+			return
+		}
+		constructor := obj.Get("constructor")
+		if constructor == nil || goja.IsUndefined(constructor) || goja.IsNull(constructor) {
+			return
+		}
+		constructorObj := constructor.ToObject(runtime)
+		if constructorObj == nil {
+			return
+		}
+		if value := constructorObj.Get("name"); value != nil {
+			name = value.String()
+		}
+	})
+
+	return thrown == nil && name == "GeneratorFunction"
 }
