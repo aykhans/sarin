@@ -1,6 +1,7 @@
 package sarin
 
 import (
+	"math"
 	"math/rand/v2"
 	"time"
 )
@@ -18,4 +19,18 @@ func firstOrEmpty(values []string) string {
 		return ""
 	}
 	return values[0]
+}
+
+func safeUintToInt(u uint) int {
+	if u > math.MaxInt {
+		return math.MaxInt
+	}
+	return int(u)
+}
+
+func safeUint64ToInt(u uint64) int {
+	if u > math.MaxInt {
+		return math.MaxInt
+	}
+	return int(u)
 }

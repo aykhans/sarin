@@ -51,7 +51,8 @@ func main() {
 		ctx,
 		combinedConfig.Methods, combinedConfig.URL, *combinedConfig.Timeout,
 		*combinedConfig.Concurrency, combinedConfig.Requests, combinedConfig.Duration,
-		*combinedConfig.Progress == config.ConfigProgressTypeBar, *combinedConfig.Insecure, combinedConfig.Params, combinedConfig.Headers,
+		*combinedConfig.Progress == config.ConfigProgressTypeBar, *combinedConfig.Insecure, *combinedConfig.MaxResponseBody,
+		combinedConfig.Params, combinedConfig.Headers,
 		combinedConfig.Cookies, combinedConfig.Bodies, combinedConfig.Proxies, combinedConfig.Values,
 		*combinedConfig.Output != config.ConfigOutputTypeNone,
 		*combinedConfig.DryRun, *combinedConfig.LogLevel, *combinedConfig.LogFile,
@@ -75,7 +76,7 @@ func main() {
 		}),
 	)
 
-	srn.Start(ctx, stopCtrl)
+	srn.Start(stopCtrl)
 
 	switch *combinedConfig.Output {
 	case config.ConfigOutputTypeNone:

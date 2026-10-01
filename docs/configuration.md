@@ -14,32 +14,33 @@ Use `-s` or `--show-config` to see the final merged configuration before sending
 
 > **Note:** For CLI flags with `string / []string` type, the flag can be used once with a single value or multiple times to provide multiple values.
 
-| Name                        | YAML                                | CLI                                          | ENV                              | Default | Description                  |
-| --------------------------- | ----------------------------------- | -------------------------------------------- | -------------------------------- | ------- | ---------------------------- |
-| [Help](#help)               | -                                   | `-help` / `-h`                               | -                                | -       | Show help message            |
-| [Version](#version)         | -                                   | `-version` / `-v`                            | -                                | -       | Show version and build info  |
-| [Show Config](#show-config) | `showConfig`<br>(boolean)           | `-show-config` / `-s`<br>(boolean)           | `SARIN_SHOW_CONFIG`<br>(boolean) | `false` | Show merged configuration    |
-| [Config File](#config-file) | `configFile`<br>(string / []string) | `-config-file` / `-f`<br>(string / []string) | `SARIN_CONFIG_FILE`<br>(string)  | -       | Path to config file(s)       |
-| [URL](#url)                 | `url`<br>(string)                   | `-url` / `-U`<br>(string)                    | `SARIN_URL`<br>(string)          | -       | Target URL (HTTP/HTTPS)      |
-| [Method](#method)           | `method`<br>(string / []string)     | `-method` / `-M`<br>(string / []string)      | `SARIN_METHOD`<br>(string)       | `GET`   | HTTP method(s)               |
-| [Timeout](#timeout)         | `timeout`<br>(duration)             | `-timeout` / `-T`<br>(duration)              | `SARIN_TIMEOUT`<br>(duration)    | `10s`   | Request timeout              |
-| [Concurrency](#concurrency) | `concurrency`<br>(number)           | `-concurrency` / `-c`<br>(number)            | `SARIN_CONCURRENCY`<br>(number)  | `1`     | Number of concurrent workers |
-| [Requests](#requests)       | `requests`<br>(number)              | `-requests` / `-r`<br>(number)               | `SARIN_REQUESTS`<br>(number)     | -       | Total requests to send       |
-| [Duration](#duration)       | `duration`<br>(duration)            | `-duration` / `-d`<br>(duration)             | `SARIN_DURATION`<br>(duration)   | -       | Test duration                |
-| [Log Level](#log-level)     | `logLevel`<br>(string)              | `-log-level` / `-l`<br>(string)              | `SARIN_LOG_LEVEL`<br>(string)    | `error` | Runtime log levels to emit   |
-| [Log File](#log-file)       | `logFile`<br>(string)               | `-log-file` / `-w`<br>(string)               | `SARIN_LOG_FILE`<br>(string)     | -       | Write runtime logs to a file |
-| [Progress](#progress)       | `progress`<br>(string)              | `-progress` / `-p`<br>(string)               | `SARIN_PROGRESS`<br>(string)     | `bar`   | Progress display (bar/none)  |
-| [Output](#output)           | `output`<br>(string)                | `-output` / `-o`<br>(string)                 | `SARIN_OUTPUT`<br>(string)       | `table` | Output format for stats      |
-| [Dry Run](#dry-run)         | `dryRun`<br>(boolean)               | `-dry-run` / `-z`<br>(boolean)               | `SARIN_DRY_RUN`<br>(boolean)     | `false` | Generate without sending     |
-| [Insecure](#insecure)       | `insecure`<br>(boolean)             | `-insecure` / `-I`<br>(boolean)              | `SARIN_INSECURE`<br>(boolean)    | `false` | Skip TLS verification        |
-| [Body](#body)               | `body`<br>(string / []string)       | `-body` / `-B`<br>(string / []string)        | `SARIN_BODY`<br>(string)         | -       | Request body                 |
-| [Params](#params)           | `params`<br>(object)                | `-param` / `-P`<br>(string / []string)       | `SARIN_PARAM`<br>(string)        | -       | URL query parameters         |
-| [Headers](#headers)         | `headers`<br>(object)               | `-header` / `-H`<br>(string / []string)      | `SARIN_HEADER`<br>(string)       | -       | HTTP headers                 |
-| [Cookies](#cookies)         | `cookies`<br>(object)               | `-cookie` / `-C`<br>(string / []string)      | `SARIN_COOKIE`<br>(string)       | -       | HTTP cookies                 |
-| [Proxy](#proxy)             | `proxy`<br>(string / []string)      | `-proxy` / `-X`<br>(string / []string)       | `SARIN_PROXY`<br>(string)        | -       | Proxy URL(s)                 |
-| [Values](#values)           | `values`<br>(string / []string)     | `-values` / `-V`<br>(string / []string)      | `SARIN_VALUES`<br>(string)       | -       | Template values (key=value)  |
-| [Lua](#lua)                 | `lua`<br>(string / []string)        | `-lua`<br>(string / []string)                | `SARIN_LUA`<br>(string)          | -       | Lua script(s)                |
-| [Js](#js)                   | `js`<br>(string / []string)         | `-js`<br>(string / []string)                 | `SARIN_JS`<br>(string)           | -       | JavaScript script(s)         |
+| Name                                    | YAML                                | CLI                                          | ENV                                 | Default | Description                   |
+| --------------------------------------- | ----------------------------------- | -------------------------------------------- | ----------------------------------- | ------- | ----------------------------- |
+| [Help](#help)                           | -                                   | `-help` / `-h`                               | -                                   | -       | Show help message             |
+| [Version](#version)                     | -                                   | `-version` / `-v`                            | -                                   | -       | Show version and build info   |
+| [Show Config](#show-config)             | `showConfig`<br>(boolean)           | `-show-config` / `-s`<br>(boolean)           | `SARIN_SHOW_CONFIG`<br>(boolean)    | `false` | Show merged configuration     |
+| [Config File](#config-file)             | `configFile`<br>(string / []string) | `-config-file` / `-f`<br>(string / []string) | `SARIN_CONFIG_FILE`<br>(string)     | -       | Path to config file(s)        |
+| [URL](#url)                             | `url`<br>(string)                   | `-url` / `-U`<br>(string)                    | `SARIN_URL`<br>(string)             | -       | Target URL (HTTP/HTTPS)       |
+| [Method](#method)                       | `method`<br>(string / []string)     | `-method` / `-M`<br>(string / []string)      | `SARIN_METHOD`<br>(string)          | `GET`   | HTTP method(s)                |
+| [Timeout](#timeout)                     | `timeout`<br>(duration)             | `-timeout` / `-T`<br>(duration)              | `SARIN_TIMEOUT`<br>(duration)       | `10s`   | Request timeout               |
+| [Max Response Body](#max-response-body) | `maxResponseBody`<br>(size)         | `-max-response-body` / `-S`<br>(size)        | `SARIN_MAX_RESPONSE_BODY`<br>(size) | `10MiB` | Largest response body to read |
+| [Concurrency](#concurrency)             | `concurrency`<br>(number)           | `-concurrency` / `-c`<br>(number)            | `SARIN_CONCURRENCY`<br>(number)     | `1`     | Number of concurrent workers  |
+| [Requests](#requests)                   | `requests`<br>(number)              | `-requests` / `-r`<br>(number)               | `SARIN_REQUESTS`<br>(number)        | -       | Total requests to send        |
+| [Duration](#duration)                   | `duration`<br>(duration)            | `-duration` / `-d`<br>(duration)             | `SARIN_DURATION`<br>(duration)      | -       | Test duration                 |
+| [Log Level](#log-level)                 | `logLevel`<br>(string)              | `-log-level` / `-l`<br>(string)              | `SARIN_LOG_LEVEL`<br>(string)       | `error` | Runtime log levels to emit    |
+| [Log File](#log-file)                   | `logFile`<br>(string)               | `-log-file` / `-w`<br>(string)               | `SARIN_LOG_FILE`<br>(string)        | -       | Write runtime logs to a file  |
+| [Progress](#progress)                   | `progress`<br>(string)              | `-progress` / `-p`<br>(string)               | `SARIN_PROGRESS`<br>(string)        | `bar`   | Progress display (bar/none)   |
+| [Output](#output)                       | `output`<br>(string)                | `-output` / `-o`<br>(string)                 | `SARIN_OUTPUT`<br>(string)          | `table` | Output format for stats       |
+| [Dry Run](#dry-run)                     | `dryRun`<br>(boolean)               | `-dry-run` / `-z`<br>(boolean)               | `SARIN_DRY_RUN`<br>(boolean)        | `false` | Generate without sending      |
+| [Insecure](#insecure)                   | `insecure`<br>(boolean)             | `-insecure` / `-I`<br>(boolean)              | `SARIN_INSECURE`<br>(boolean)       | `false` | Skip TLS verification         |
+| [Body](#body)                           | `body`<br>(string / []string)       | `-body` / `-B`<br>(string / []string)        | `SARIN_BODY`<br>(string)            | -       | Request body                  |
+| [Params](#params)                       | `params`<br>(object)                | `-param` / `-P`<br>(string / []string)       | `SARIN_PARAM`<br>(string)           | -       | URL query parameters          |
+| [Headers](#headers)                     | `headers`<br>(object)               | `-header` / `-H`<br>(string / []string)      | `SARIN_HEADER`<br>(string)          | -       | HTTP headers                  |
+| [Cookies](#cookies)                     | `cookies`<br>(object)               | `-cookie` / `-C`<br>(string / []string)      | `SARIN_COOKIE`<br>(string)          | -       | HTTP cookies                  |
+| [Proxy](#proxy)                         | `proxy`<br>(string / []string)      | `-proxy` / `-X`<br>(string / []string)       | `SARIN_PROXY`<br>(string)           | -       | Proxy URL(s)                  |
+| [Values](#values)                       | `values`<br>(string / []string)     | `-values` / `-V`<br>(string / []string)      | `SARIN_VALUES`<br>(string)          | -       | Template values (key=value)   |
+| [Lua](#lua)                             | `lua`<br>(string / []string)        | `-lua`<br>(string / []string)                | `SARIN_LUA`<br>(string)             | -       | Lua script(s)                 |
+| [Js](#js)                               | `js`<br>(string / []string)         | `-js`<br>(string / []string)                 | `SARIN_JS`<br>(string)              | -       | JavaScript script(s)          |
 
 ---
 
@@ -168,6 +169,20 @@ Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
 
 **Examples:** `5s`, `300ms`, `1m20s`
 
+## Max Response Body
+
+Largest response body sarin reads. Defaults to `10MiB`, and `0` removes the limit.
+
+The value is a whole number of bytes, with or without a unit: `B`, `KB`, `MB`, `GB`, `TB` are powers of 1000, `KiB`, `MiB`, `GiB`, `TiB` are powers of 1024. Case is ignored and a space before the unit is allowed. The largest accepted value is `1GiB`, because one response can take a few times the limit in memory.
+
+**Examples:** `1048576`, `10MiB`, `2MB`, `512KiB`
+
+A server can declare a `Content-Length` far larger than it sends, and the body is allocated from that declared length, so without a limit a single response can exhaust memory. A response above the limit fails with `response body exceeds the body limit` and is counted like any other error.
+
+The limit applies per response in flight, and a declared Content-Length is allocated up to it, so the worst case is a few times the limit times the concurrency. It covers the requests scripts make as well.
+
+A compressed response in a script is decoded first, so the limit covers the decoded size as well as the bytes that arrived. Decoding holds both at once, so a brotli or zstd body peaks at over ten times the limit. Ratios are unbounded, and 106 bytes of brotli can hold 64MiB, so with `0` a tiny download can still exhaust memory.
+
 ## Concurrency
 
 Number of concurrent workers. Must be between 1 and 100,000,000. Defaults to `1`.
@@ -188,7 +203,7 @@ Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
 
 Runtime log levels to emit, comma-separated. Valid levels: `info`, `error`. Defaults to `error`.
 
-- `error`: errors that occur while generating or sending a request
+- `error`: errors that occur while generating a request. A request that fails to send is counted in the results instead
 - `info`: every completed response
 
 Leave empty to disable logging entirely.
@@ -218,6 +233,10 @@ Using `none` disables output and reduces memory usage since response statistics 
 ## Dry Run
 
 Generate requests without sending them. Useful for testing templates.
+
+A script's own `http` calls are still sent, since a script needs them to build the request you are inspecting. Only the requests sarin generates are held back.
+
+The duration in the results is how long generating each request took, templates and scripts included, so it is a different measurement from the response time a real run reports. A request with neither renders once before the run and reports `0s`.
 
 ## Insecure
 
@@ -456,7 +475,9 @@ function transform(req)
 end
 ```
 
-> **Note:** Header, parameter, and cookie values can be a single string or a table (array) for multiple values per key (e.g. `{"val1", "val2"}`).
+> **Note:** Header, parameter, and cookie values can be a single string or a table (array) for multiple values per key (e.g. `{"val1", "val2"}`). Numbers and booleans are converted to text, other values are skipped.
+
+> **Note:** Lua scripts can send their own HTTP requests with `http` and work with JSON through the global `json` table. See [HTTP Requests in Scripts](#http-requests-in-scripts).
 
 **YAML example:**
 
@@ -521,7 +542,9 @@ function transform(req) {
 }
 ```
 
-> **Note:** Header, parameter, and cookie values can be a single string or an array for multiple values per key (e.g. `["val1", "val2"]`).
+> **Note:** Header, parameter, and cookie values can be a single string or an array for multiple values per key (e.g. `["val1", "val2"]`). Numbers and booleans are converted to text, other values are skipped.
+
+> **Note:** JavaScript scripts can send their own HTTP requests with `http`. See [HTTP Requests in Scripts](#http-requests-in-scripts).
 
 **YAML example:**
 
@@ -553,4 +576,106 @@ js:
 
 ```sh
 SARIN_JS='function transform(req) { req.headers["X-Custom"] = "my-value"; return req; }'
+```
+
+## HTTP Requests in Scripts
+
+Lua and JavaScript scripts can send their own HTTP requests and use the response in the main request, for example to fetch a fresh token or CSRF value from another endpoint.
+
+**Function:**
+
+```
+http(url, opts)
+```
+
+`url` must be an absolute `http` or `https` URL. `opts` is optional.
+
+**Options:**
+
+| Option         | Type                        | Default | Description                                                                                            |
+| -------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------------------ |
+| `method`       | string                      | `GET`   | HTTP method, sent as given                                                                             |
+| `headers`      | table/object                | -       | Request headers, same shape as `req.headers`                                                           |
+| `params`       | table/object                | -       | Query parameters, added to any already in the URL                                                      |
+| `cookies`      | table/object                | -       | Cookies, sent as a single `Cookie` header                                                              |
+| `body`         | string                      | `""`    | Request body                                                                                           |
+| `timeout`      | duration string (`"500ms"`) | `10s`   | Request timeout (the `timeout` config does not apply), applied to each hop when redirects are followed |
+| `insecure`     | boolean                     | `false` | Skip TLS verification (the `insecure` config does not apply)                                           |
+| `maxRedirects` | number                      | `0`     | How many redirects to follow, `0` follows none, maximum 100                                            |
+
+Unknown options and values of the wrong type raise an error.
+
+**Response:**
+
+| Field / Method | Description                                                        |
+| -------------- | ------------------------------------------------------------------ |
+| `status`       | Status code (number)                                               |
+| `headers`      | Response headers, each key holding an array of values              |
+| `body`         | Response body (string)                                             |
+| `header(name)` | First value of a header, case-insensitive; `nil`/`null` if missing |
+| `cookie(name)` | Value of a cookie from `Set-Cookie`; `nil`/`null` if missing       |
+| `json()`       | JavaScript only: parses the body as JSON                           |
+| `bytes()`      | JavaScript only: the body as a `Uint8Array`                        |
+
+In Lua, call the helpers as `res:header("name")` or `res.header("name")`.
+
+> **Note:** JavaScript strings hold UTF-16, so `body` replaces bytes that are not valid UTF-8 and `body.length` counts code units rather than bytes. Use `bytes()` for binary responses and for the real byte count. Lua strings keep the bytes as they arrived.
+
+**Behavior:**
+
+- **Runs on every request:** the requests are sent each time `transform` runs, so every main request triggers them. Script globals persist across requests within a worker, so a script can cache a value itself (e.g. `if not token then token = login() end`).
+- **Same proxy:** when proxies are configured, a script's requests go through the same proxy as the main request they belong to.
+- **Status codes:** non-2xx responses are returned normally; check `status` in the script.
+- **Errors:** network failures and timeouts raise a script error. The main request is not sent and the error is counted in the results. Scripts can catch it with `pcall` (Lua) or `try`/`catch` (JavaScript).
+- **Response bodies:** the [Max Response Body](#max-response-body) config bounds these requests too, and a body above it raises an error the script can catch.
+- **Compressed responses:** sarin asks for no encoding, so this only applies when a script sends `Accept-Encoding` itself or the server compresses unasked. A `gzip`, `deflate`, `br` or `zstd` body is then decoded before the script sees it, and `Content-Encoding` and `Content-Length` are both dropped from `headers` because neither describes what the script receives. Anything else is left raw with its header intact: an empty body, `identity`, a `Content-Encoding` sarin does not recognise, and two or more codings at once. A body that fails to decode raises an error the script can catch, though `br` carries no checksum, so damage to a brotli body can go unnoticed.
+- **Only inside `transform`:** `http` works anywhere while `transform` runs, including in helper functions it calls. Calling it at the top level of a script raises an error, because that code also runs during config validation and when each worker starts.
+- **Dry run:** script requests are still sent in dry-run mode.
+- **Not measured:** script requests are not included in the results.
+
+**Lua JSON:**
+
+Lua has no built-in JSON support, so Lua scripts get a global `json` table:
+
+- `json.decode(string)`: arrays become 1-indexed tables and `null` becomes `nil` (so `null` array items leave holes).
+- `json.encode(value)`: a table with keys exactly `1..n` becomes an array, any other table becomes an object, and an empty table becomes `{}`.
+
+JavaScript scripts use the built-in `JSON` object.
+
+**Lua example:**
+
+```lua
+function transform(req)
+    local res = http("https://api.example.com/login", {
+        method = "POST",
+        headers = { ["Content-Type"] = "application/json" },
+        body = json.encode({ user = "test", password = "secret" }),
+        timeout = "2s",
+    })
+    if res.status ~= 200 then
+        error("login failed: " .. res.status)
+    end
+
+    req.headers["Authorization"] = "Bearer " .. json.decode(res.body).token
+    return req
+end
+```
+
+**JavaScript example:**
+
+```javascript
+function transform(req) {
+    const res = http("https://api.example.com/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: "test", password: "secret" }),
+        timeout: "2s",
+    });
+    if (res.status !== 200) {
+        throw new Error("login failed: " + res.status);
+    }
+
+    req.headers["Authorization"] = "Bearer " + res.json().token;
+    return req;
+}
 ```

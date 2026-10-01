@@ -58,8 +58,7 @@ func (fc *FileCache) GetOrLoad(source string) (*CachedFile, error) {
 
 	file := &CachedFile{Content: content, Filename: filename}
 
-	// LoadOrStore handles race condition - if another goroutine
-	// cached it first, we get theirs (no duplicate storage)
+	// If another goroutine cached it first, LoadOrStore returns theirs
 	actual, _ := fc.cache.LoadOrStore(source, file)
 	return actual.(*CachedFile), nil
 }
@@ -94,9 +93,17 @@ func (fc *FileCache) fetchURL(url string) ([]byte, string, error) {
 		return nil, "", types.NewHTTPStatusError(url, resp.StatusCode, resp.Status)
 	}
 
-	content, err := io.ReadAll(resp.Body)
+	// A declared size above the limit is refused before anything is read.
+	if resp.ContentLength > types.RemoteFetchLimit {
+		return nil, "", types.NewHTTPFetchError(url, types.ErrRemoteFileTooLarge)
+	}
+
+	content, err := io.ReadAll(io.LimitReader(resp.Body, types.RemoteFetchLimit+1))
 	if err != nil {
 		return nil, "", types.NewHTTPFetchError(url, err)
+	}
+	if len(content) > types.RemoteFetchLimit {
+		return nil, "", types.NewHTTPFetchError(url, types.ErrRemoteFileTooLarge)
 	}
 
 	// Extract filename from URL path

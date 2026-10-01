@@ -2,6 +2,9 @@ package script
 
 import (
 	"errors"
+	"fmt"
+	"reflect"
+	"strconv"
 
 	"github.com/dop251/goja"
 	"go.aykhans.me/sarin/internal/types"
@@ -11,7 +14,14 @@ import (
 type JsEngine struct {
 	runtime   *goja.Runtime
 	transform goja.Callable
+	jsonParse goja.Callable
+	// errorConstructor is the built-in Error, captured before the script can replace it.
+	errorConstructor goja.Value
+	http             httpBridge
 }
+
+// promiseType is what a transform returns when it is declared async or as a generator.
+var promiseType = reflect.TypeFor[*goja.Promise]()
 
 // NewJsEngine creates a new JavaScript script engine with the given script content.
 // The script must define a global `transform` function that takes a request object
@@ -29,11 +39,16 @@ type JsEngine struct {
 //   - types.ScriptExecutionError
 func NewJsEngine(scriptContent string) (*JsEngine, error) {
 	vm := goja.New()
+	engine := &JsEngine{runtime: vm}
+
+	// Register the globals before running the script so its functions can use them
+	if err := engine.registerHTTP(); err != nil {
+		return nil, types.NewScriptExecutionError("JavaScript", err)
+	}
 
 	// Execute the script to define the transform function
-	_, err := vm.RunString(scriptContent)
-	if err != nil {
-		return nil, types.NewScriptExecutionError("JavaScript", err)
+	if _, err := vm.RunString(scriptContent); err != nil {
+		return nil, types.NewScriptExecutionError("JavaScript", engine.exceptionError(err))
 	}
 
 	// Get the transform function
@@ -47,23 +62,43 @@ func NewJsEngine(scriptContent string) (*JsEngine, error) {
 		return nil, types.NewScriptExecutionError("JavaScript", errors.New("'transform' must be a function"))
 	}
 
-	return &JsEngine{
-		runtime:   vm,
-		transform: transform,
-	}, nil
+	// A generator returns an iterator, which is an ordinary object to Go, so the
+	// call cannot tell it apart and the declaration is the only thing left to read.
+	if isGeneratorFunction(vm, transformVal) {
+		return nil, types.ErrScriptTransformAsync
+	}
+
+	engine.transform = transform
+
+	return engine, nil
+}
+
+// SetHTTPDoer sets the doer that the script's http.* calls are sent through.
+func (e *JsEngine) SetHTTPDoer(doer HTTPDoer) {
+	e.http.doer = doer
 }
 
 // Transform executes the JavaScript transform function with the given request data.
 // It can return the following errors:
 //   - types.ScriptExecutionError
 func (e *JsEngine) Transform(req *RequestData) error {
+	e.http.active = true
+	defer func() { e.http.active = false }()
+
 	// Convert RequestData to JavaScript object
 	reqObj := e.requestDataToObject(req)
 
 	// Call transform(req)
 	result, err := e.transform(goja.Undefined(), reqObj)
 	if err != nil {
-		return types.NewScriptExecutionError("JavaScript", err)
+		return types.NewScriptExecutionError("JavaScript", e.exceptionError(err))
+	}
+
+	// An async or generator transform returns a promise nothing ever awaits, and a promise
+	// carries none of the request fields, so the request would go out untransformed.
+	// ExportType reads the type alone, while Export would run every getter on the result.
+	if result.ExportType() == promiseType {
+		return types.ErrScriptTransformAsync
 	}
 
 	// Update RequestData from the returned object
@@ -79,6 +114,8 @@ func (e *JsEngine) Close() {
 	// goja doesn't have an explicit close method, but we can help GC
 	e.runtime = nil
 	e.transform = nil
+	e.jsonParse = nil
+	e.errorConstructor = nil
 }
 
 // requestDataToObject converts RequestData to a goja Value (JavaScript object).
@@ -124,37 +161,70 @@ func (e *JsEngine) objectToRequestData(val goja.Value, req *RequestData) error {
 		return types.ErrScriptTransformReturnObject
 	}
 
-	// Method
-	if v := obj.Get("method"); v != nil && !goja.IsUndefined(v) {
-		req.Method = v.String()
+	// Reading a field runs the script's own getters and toString, which throw as a Go
+	// panic outside goja's execution context, so the whole read runs inside Try.
+	var fieldErr error
+	if thrown := e.runtime.Try(func() {
+		// Method
+		if v := obj.Get("method"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Method = v.String()
+		}
+
+		// Path
+		if v := obj.Get("path"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Path = v.String()
+		}
+
+		// Body
+		if v := obj.Get("body"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			req.Body = v.String()
+		}
+
+		// Headers
+		if v := obj.Get("headers"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			values, err := objectField("headers", v)
+			if err != nil {
+				fieldErr = err
+				return
+			}
+			req.Headers = e.objectToStringSliceMap(values)
+		}
+
+		// Params
+		if v := obj.Get("params"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			values, err := objectField("params", v)
+			if err != nil {
+				fieldErr = err
+				return
+			}
+			req.Params = e.objectToStringSliceMap(values)
+		}
+
+		// Cookies
+		if v := obj.Get("cookies"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+			values, err := objectField("cookies", v)
+			if err != nil {
+				fieldErr = err
+				return
+			}
+			req.Cookies = e.objectToStringSliceMap(values)
+		}
+	}); thrown != nil {
+		return e.exceptionError(thrown)
 	}
 
-	// Path
-	if v := obj.Get("path"); v != nil && !goja.IsUndefined(v) {
-		req.Path = v.String()
-	}
+	return fieldErr
+}
 
-	// Body
-	if v := obj.Get("body"); v != nil && !goja.IsUndefined(v) {
-		req.Body = v.String()
+// objectField rejects anything that is not a plain object, since reading keys off an
+// array or a boxed string yields headers named after indexes and off a Date yields none.
+// A Map, a Set and a typed array still pass, so the field is emptied rather than refused.
+func objectField(name string, value goja.Value) (*goja.Object, error) {
+	obj, ok := value.(*goja.Object)
+	if !ok || obj.ClassName() != "Object" {
+		return nil, fmt.Errorf("%s must be an object", name)
 	}
-
-	// Headers
-	if v := obj.Get("headers"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		req.Headers = e.objectToStringSliceMap(v.ToObject(e.runtime))
-	}
-
-	// Params
-	if v := obj.Get("params"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		req.Params = e.objectToStringSliceMap(v.ToObject(e.runtime))
-	}
-
-	// Cookies
-	if v := obj.Get("cookies"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		req.Cookies = e.objectToStringSliceMap(v.ToObject(e.runtime))
-	}
-
-	return nil
+	return obj, nil
 }
 
 // stringSliceToArray converts a Go []string to a JavaScript array.
@@ -176,23 +246,78 @@ func (e *JsEngine) objectToStringSliceMap(obj *goja.Object) map[string][]string 
 	result := make(map[string][]string)
 	for _, key := range obj.Keys() {
 		v := obj.Get(key)
-		if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
-			continue
-		}
 
 		// Check if it's an array
-		if arr, ok := v.Export().([]any); ok {
-			var values []string
-			for _, item := range arr {
-				if s, ok := item.(string); ok {
-					values = append(values, s)
+		if arr, ok := v.(*goja.Object); ok && arr.ClassName() == "Array" {
+			length := int(arr.Get("length").ToInteger())
+			values := make([]string, 0, length)
+			for i := range length {
+				if text, ok := jsStringValue(arr.Get(strconv.Itoa(i))); ok {
+					values = append(values, text)
 				}
 			}
 			result[key] = values
-		} else {
-			// Single value - wrap in slice
-			result[key] = []string{v.String()}
+			continue
+		}
+
+		// Single value, wrap it in a slice
+		if text, ok := jsStringValue(v); ok {
+			result[key] = []string{text}
 		}
 	}
 	return result
+}
+
+// exceptionError keeps the thrown value's message without goja's stack frame.
+// Stringifying runs through Runtime.Try because a thrown value with no usable
+// toString makes goja panic outside its own execution context.
+func (e *JsEngine) exceptionError(err error) error {
+	var exception *goja.Exception
+	if !errors.As(err, &exception) {
+		return err
+	}
+
+	var message string
+	if thrown := e.runtime.Try(func() { message = exception.Value().String() }); thrown != nil {
+		message = "unprintable thrown value"
+	}
+	return errors.New(message)
+}
+
+// jsStringValue renders a JavaScript primitive the way the script would see it.
+// Objects, arrays and functions have no useful text form, so they are skipped.
+func jsStringValue(v goja.Value) (string, bool) {
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return "", false
+	}
+	if _, isObject := v.(*goja.Object); isObject {
+		return "", false
+	}
+	return v.String(), true
+}
+
+// isGeneratorFunction reports whether a function is declared with a star.
+// The name comes from the script's own prototype chain, so a script can falsify it either way.
+// Reading it can run a script getter, so the whole walk stays inside Try.
+func isGeneratorFunction(runtime *goja.Runtime, value goja.Value) bool {
+	var name string
+	thrown := runtime.Try(func() {
+		obj := value.ToObject(runtime)
+		if obj == nil {
+			return
+		}
+		constructor := obj.Get("constructor")
+		if constructor == nil || goja.IsUndefined(constructor) || goja.IsNull(constructor) {
+			return
+		}
+		constructorObj := constructor.ToObject(runtime)
+		if constructorObj == nil {
+			return
+		}
+		if value := constructorObj.Get("name"); value != nil {
+			name = value.String()
+		}
+	})
+
+	return thrown == nil && name == "GeneratorFunction"
 }

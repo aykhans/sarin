@@ -2,9 +2,9 @@
 
 Sarin supports Go templates in URL paths, methods, bodies, headers, params, cookies, and values.
 
-> **Note:** Templating in URL host and scheme is not supported. Only the path portion of the URL can contain templates.
+> **Note:** Templating in URL host and scheme is not supported. Only the path and query string of the URL can contain templates.
 
-> **Note:** Template rendering happens before the request is sent. The request timeout (`-T` / `timeout`) only governs the HTTP request itself and starts _after_ templates have finished rendering, so slow template functions (e.g. captcha solvers, remote `file_Read`) cannot cause a request timeout no matter how long they take.
+> **Note:** Template rendering happens before the request is sent. The request timeout (`-T` / `timeout`) only governs the HTTP request itself and starts _after_ templates have finished rendering, so slow template functions (e.g. captcha solvers, remote `file_Read`) cannot cause a request timeout no matter how long they take. Downloads have their own limits: 30 seconds and 64MiB per file.
 
 ## Table of Contents
 
@@ -29,6 +29,7 @@ Sarin supports Go templates in URL paths, methods, bodies, headers, params, cook
     - [Generate](#generate)
     - [Auth](#auth)
     - [Address](#address)
+    - [Airline](#airline)
     - [Game](#game)
     - [Beer](#beer)
     - [Car](#car)
@@ -151,7 +152,7 @@ body: '{{ json_Encode (dict_Str "key1" "value1" "key2" "value2") }}'
 | ------------------------ | ------------------------------------------- | ------------------------------------------------------------------------------- |
 | `time_NowUnix`           | Current Unix timestamp (seconds)            | `{{ time_NowUnix }}` → `1735689600`                                             |
 | `time_NowUnixMilli`      | Current Unix timestamp (milliseconds)       | `{{ time_NowUnixMilli }}` → `1735689600123`                                     |
-| `time_NowRFC3339`        | Current time in RFC3339 format              | `{{ time_NowRFC3339 }}` → `"2026-02-26T21:00:00Z"`                              |
+| `time_NowRFC3339`        | Current time in RFC3339 format              | `{{ time_NowRFC3339 }}` → `"2026-02-26T21:00:00+04:00"` (local time)            |
 | `time_Format(layout, t)` | Format a `time.Time` value with a Go layout | `{{ time_Format "2006-01-02" (strings_ToDate "2024-05-10") }}` → `"2024-05-10"` |
 
 ### Crypto Functions
@@ -164,6 +165,8 @@ body: '{{ json_Encode (dict_Str "key1" "value1" "key2" "value2") }}'
 | `crypto_Base64URL(s string)`         | Base64 URL-safe encoding (without padding) | `{{ crypto_Base64URL "hello world" }}`       |
 
 ### Body Functions
+
+> **Note:** These are available in `body` only, not in the URL, headers, params, cookies or values.
 
 | Function                         | Description                                                                                                                                                                                                 | Example                                                             |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -387,7 +390,7 @@ These functions are powered by [gofakeit](https://github.com/brianvoe/gofakeit) 
 | Function                                                                                      | Description                                                 | Example                                               |
 | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- |
 | `fakeit_Username`                                                                             | Username                                                    | `"Daniel1364"`                                        |
-| `fakeit_Password(upper bool, lower bool, numeric bool, special bool, space bool, length int)` | Generate password with specified character types and length | `{{ fakeit_Password true true true false false 16 }}` |
+| `fakeit_Password(lower bool, upper bool, numeric bool, special bool, space bool, length int)` | Generate password with specified character types and length | `{{ fakeit_Password true true true false false 16 }}` |
 
 ### Address
 
@@ -521,7 +524,7 @@ These functions are powered by [gofakeit](https://github.com/brianvoe/gofakeit) 
 | `fakeit_LoremIpsumSentence(wordCount int)`                                               | Lorem ipsum sentence with specified word count  | `{{ fakeit_LoremIpsumSentence 5 }}`           |
 | `fakeit_LoremIpsumParagraph(paragraphs int, sentences int, words int, separator string)` | Lorem ipsum paragraphs with specified structure | `{{ fakeit_LoremIpsumParagraph 1 3 5 "\n" }}` |
 | `fakeit_Question`                                                                        | Random question                                 | `"What is the marginal gain from fear?"`      |
-| `fakeit_Quote`                                                                           | Random quote                                    | `"Energy is contagious—so is fear"`           |
+| `fakeit_Quote`                                                                           | Random quote                                    | `"Energy is contagious so is fear"`           |
 | `fakeit_Phrase`                                                                          | Random phrase                                   | `"how many siblings do you have"`             |
 | `fakeit_PhraseNoun`                                                                      | Noun phrase                                     | `"a tribe"`                                   |
 | `fakeit_PhraseVerb`                                                                      | Verb phrase                                     | `"fully integrate a system"`                  |
