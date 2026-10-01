@@ -31,7 +31,7 @@ Flags:
     -w, -log-file          string     Write runtime logs to this file instead of the terminal/stderr
     -p, -progress          string     Progress display (possible values: bar, none) (default '%v')
     -o, -output            string     Output format (possible values: table, json, yaml, none) (default '%v')
-    -z, -dry-run           bool       Run without sending requests (default %v)
+    -z, -dry-run           bool       Run without sending the generated requests (default %v)
 
   Request Config:
     -U, -url               string     Target URL for the request
@@ -145,8 +145,8 @@ func (parser ConfigCLIParser) Parse() (*Config, error) {
 		flagSet.StringVar(&output, "output", "", "Output format (possible values: table, json, yaml, none)")
 		flagSet.StringVar(&output, "o", "", "Output format (possible values: table, json, yaml, none)")
 
-		flagSet.BoolVar(&dryRun, "dry-run", false, "Run without sending requests")
-		flagSet.BoolVar(&dryRun, "z", false, "Run without sending requests")
+		flagSet.BoolVar(&dryRun, "dry-run", false, "Run without sending the generated requests")
+		flagSet.BoolVar(&dryRun, "z", false, "Run without sending the generated requests")
 
 		// Request config
 		flagSet.StringVar(&urlInput, "url", "", "Target URL for the request")

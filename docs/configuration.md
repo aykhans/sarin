@@ -234,6 +234,8 @@ Using `none` disables output and reduces memory usage since response statistics 
 
 Generate requests without sending them. Useful for testing templates.
 
+A script's own `http` calls are still sent, since a script needs them to build the request you are inspecting. Only the requests sarin generates are held back.
+
 ## Insecure
 
 Skip TLS certificate verification.
