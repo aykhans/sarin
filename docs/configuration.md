@@ -236,6 +236,8 @@ Generate requests without sending them. Useful for testing templates.
 
 A script's own `http` calls are still sent, since a script needs them to build the request you are inspecting. Only the requests sarin generates are held back.
 
+The duration in the results is how long generating each request took, templates and scripts included, which is a different measurement from the response time a real run reports.
+
 ## Insecure
 
 Skip TLS certificate verification.
