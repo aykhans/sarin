@@ -599,7 +599,7 @@ http(url, opts)
 | `params`       | table/object                | -       | Query parameters, added to any already in the URL                                                      |
 | `cookies`      | table/object                | -       | Cookies, sent as a single `Cookie` header                                                              |
 | `body`         | string                      | `""`    | Request body                                                                                           |
-| `timeout`      | duration string (`"500ms"`) | `30s`   | Request timeout (the `timeout` config does not apply), applied to each hop when redirects are followed |
+| `timeout`      | duration string (`"500ms"`) | `10s`   | Request timeout (the `timeout` config does not apply), applied to each hop when redirects are followed |
 | `insecure`     | boolean                     | `false` | Skip TLS verification (the `insecure` config does not apply)                                           |
 | `maxRedirects` | number                      | `0`     | How many redirects to follow, `0` follows none, maximum 100                                            |
 

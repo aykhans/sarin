@@ -14,8 +14,8 @@ import (
 	"go.aykhans.me/sarin/internal/types"
 )
 
-// scriptHTTPDefaultTimeout is the default timeout for script requests, independent of -T.
-const scriptHTTPDefaultTimeout = 30 * time.Second
+// scriptHTTPDefaultTimeout is the default timeout for script requests.
+const scriptHTTPDefaultTimeout = 10 * time.Second
 
 // scriptHTTPClient sends scripts' http.* requests. It is safe for concurrent use.
 type scriptHTTPClient struct {
