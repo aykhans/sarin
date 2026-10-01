@@ -442,6 +442,7 @@ var (
 	ErrScriptHTTPURLInvalid        = errors.New("URL must be an absolute http or https URL")
 	ErrScriptHTTPUnknownOption     = errors.New("unknown option")
 	ErrScriptJSONCycle             = errors.New("cannot encode a table that contains itself")
+	ErrScriptJSONDepth             = errors.New("cannot encode a table nested too deeply")
 )
 
 type ScriptTypeError struct {

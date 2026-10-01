@@ -45,9 +45,14 @@ func luaJSONDecode(state *lua.LState) int {
 	return 1
 }
 
+// luaJSONMaxDepth matches the depth encoding/json accepts, so a table a script
+// decoded always encodes again, and it stays far below what overflows the Go stack.
+const luaJSONMaxDepth = 10000
+
 // luaToGo converts a Lua value to a JSON-encodable Go value.
 // It can return the following errors:
 //   - types.ErrScriptJSONCycle
+//   - types.ErrScriptJSONDepth
 //   - types.ScriptTypeError
 func luaToGo(value lua.LValue, visiting map[*lua.LTable]bool) (any, error) {
 	switch v := value.(type) {
@@ -62,6 +67,12 @@ func luaToGo(value lua.LValue, visiting map[*lua.LTable]bool) (any, error) {
 	case *lua.LTable:
 		if visiting[v] {
 			return nil, types.ErrScriptJSONCycle
+		}
+		// visiting holds the tables on the current path, so its size is the depth.
+		// A table millions of levels deep overflows the Go stack, which is a fatal
+		// error no pcall can catch, so the descent is bounded well before that.
+		if len(visiting) >= luaJSONMaxDepth {
+			return nil, types.ErrScriptJSONDepth
 		}
 		visiting[v] = true
 		defer delete(visiting, v)
