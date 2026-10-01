@@ -857,7 +857,7 @@ progress: none
 
 ## Runtime Logging
 
-`--log-level` selects which runtime logs Sarin emits (comma-separated `info` and `error`, default `error`). `error` covers request and generation errors, `info` covers every completed response (status, duration, headers, body). Logs appear in the progress log box on an interactive terminal, go to stderr when piped, or go to a file with `--log-file`.
+`--log-level` selects which runtime logs Sarin emits (comma-separated `info` and `error`, default `error`). `error` covers errors raised while generating a request, `info` covers every completed response (status, duration, headers, body). A request that fails to send is counted in the results rather than logged. Logs appear in the progress log box on an interactive terminal, go to stderr when piped, or go to a file with `--log-file`.
 
 **Log responses and errors:**
 
@@ -883,9 +883,8 @@ sarin -U http://example.com -r 1000 -l info -o json > stats.json 2> run.log
 ```yaml
 url: http://example.com
 requests: 1000
-concurrency: 10
-logLevel: info,error
-logFile: ./run.log
+logLevel: info
+output: json
 ```
 
 </details>

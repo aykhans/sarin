@@ -203,7 +203,7 @@ Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
 
 Runtime log levels to emit, comma-separated. Valid levels: `info`, `error`. Defaults to `error`.
 
-- `error`: errors that occur while generating or sending a request
+- `error`: errors that occur while generating a request. A request that fails to send is counted in the results instead
 - `info`: every completed response
 
 Leave empty to disable logging entirely.
@@ -236,7 +236,7 @@ Generate requests without sending them. Useful for testing templates.
 
 A script's own `http` calls are still sent, since a script needs them to build the request you are inspecting. Only the requests sarin generates are held back.
 
-The duration in the results is how long generating each request took, templates and scripts included, which is a different measurement from the response time a real run reports.
+The duration in the results is how long generating each request took, templates and scripts included, so it is a different measurement from the response time a real run reports. A request with neither renders once before the run and reports `0s`.
 
 ## Insecure
 
