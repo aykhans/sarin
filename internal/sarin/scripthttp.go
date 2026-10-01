@@ -1,6 +1,7 @@
 package sarin
 
 import (
+	"compress/zlib"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -18,10 +19,11 @@ const scriptHTTPDefaultTimeout = 30 * time.Second
 
 // scriptHTTPClient sends scripts' http.* requests. It is safe for concurrent use.
 type scriptHTTPClient struct {
-	ctx            context.Context //nolint:containedctx
-	client         *fasthttp.Client
-	insecureClient *fasthttp.Client
-	defaultTimeout time.Duration
+	ctx             context.Context //nolint:containedctx
+	client          *fasthttp.Client
+	insecureClient  *fasthttp.Client
+	defaultTimeout  time.Duration
+	maxResponseBody int
 }
 
 var _ script.HTTPDoer = (*scriptHTTPClient)(nil)
@@ -71,10 +73,11 @@ func newScriptHTTPClient(
 	}
 
 	return &scriptHTTPClient{
-		ctx:            ctx,
-		client:         newClient(false),
-		insecureClient: newClient(true),
-		defaultTimeout: defaultTimeout,
+		ctx:             ctx,
+		client:          newClient(false),
+		insecureClient:  newClient(true),
+		defaultTimeout:  defaultTimeout,
+		maxResponseBody: safeUint64ToInt(maxResponseBody),
 	}
 }
 
@@ -166,11 +169,42 @@ func (c *scriptHTTPClient) Do(r *script.HTTPRequest) (*script.HTTPResponse, erro
 		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
 	}
 
-	body := resp.Body()
+	body, err := decodeResponseBody(resp, c.maxResponseBody)
+	if err != nil {
+		return nil, types.NewScriptHTTPRequestError(r.Method, r.URL, err)
+	}
 
 	return &script.HTTPResponse{
 		Status:  resp.StatusCode(),
 		Headers: collectRespHeaders(resp),
 		Body:    string(body),
 	}, nil
+}
+
+// decodeResponseBody decodes a body the server compressed, since scripts read it as text.
+// The limit covers the decoded size, which is what a compression bomb inflates to.
+// An empty body is left alone because the decoders reject zero bytes, and a HEAD or a 304
+// carries the encoding with no body. A coding fasthttp does not decode, and the bare
+// deflate stream some servers send without a zlib header, are left raw for the script.
+func decodeResponseBody(resp *fasthttp.Response, maxResponseBody int) ([]byte, error) {
+	if len(resp.Header.ContentEncoding()) == 0 || len(resp.Body()) == 0 {
+		return resp.Body(), nil
+	}
+
+	decoded, err := resp.BodyUncompressedWithLimit(maxResponseBody)
+	if errors.Is(err, fasthttp.ErrContentEncodingUnsupported) || errors.Is(err, zlib.ErrHeader) {
+		return resp.Body(), nil
+	}
+	if err != nil {
+		if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+			err = types.ErrResponseBodyTooLarge
+		}
+		return nil, err
+	}
+
+	// Neither header describes the decoded body, so both go, as net/http does on a gunzip.
+	resp.Header.SetContentEncoding("")
+	resp.Header.Del(fasthttp.HeaderContentLength)
+
+	return decoded, nil
 }

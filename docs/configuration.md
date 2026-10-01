@@ -181,6 +181,8 @@ A server can declare a `Content-Length` far larger than it sends, and the body i
 
 The limit applies per response in flight, and a declared Content-Length is allocated up to it, so the worst case is a few times the limit times the concurrency. It covers the requests scripts make as well.
 
+A compressed response in a script is decoded first, so the limit covers the decoded size as well as the bytes that arrived. Decoding holds both at once, so a brotli or zstd body peaks at over ten times the limit. Ratios are unbounded, and 106 bytes of brotli can hold 64MiB, so with `0` a tiny download can still exhaust memory.
+
 ## Concurrency
 
 Number of concurrent workers. Must be between 1 and 100,000,000. Defaults to `1`.
@@ -622,6 +624,7 @@ In Lua, call the helpers as `res:header("name")` or `res.header("name")`.
 - **Status codes:** non-2xx responses are returned normally; check `status` in the script.
 - **Errors:** network failures and timeouts raise a script error. The main request is not sent and the error is counted in the results. Scripts can catch it with `pcall` (Lua) or `try`/`catch` (JavaScript).
 - **Response bodies:** the [Max Response Body](#max-response-body) config bounds these requests too, and a body above it raises an error the script can catch.
+- **Compressed responses:** sarin asks for no encoding, so this only applies when a script sends `Accept-Encoding` itself or the server compresses unasked. A `gzip`, `deflate`, `br` or `zstd` body is then decoded before the script sees it, and `Content-Encoding` and `Content-Length` are both dropped from `headers` because neither describes what the script receives. Anything else is left raw with its header intact: an empty body, `identity`, a `Content-Encoding` sarin does not recognise, and two or more codings at once. A body that fails to decode raises an error the script can catch, though `br` carries no checksum, so damage to a brotli body can go unnoticed.
 - **Only inside `transform`:** `http` works anywhere while `transform` runs, including in helper functions it calls. Calling it at the top level of a script raises an error, because that code also runs during config validation and when each worker starts.
 - **Dry run:** script requests are still sent in dry-run mode.
 - **Not measured:** script requests are not included in the results.
