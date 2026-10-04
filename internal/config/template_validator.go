@@ -193,7 +193,7 @@ func validateTemplateURLPath(urlPath string, funcMap template.FuncMap) []types.F
 
 func ValidateTemplates(config *Config) []types.FieldValidationError {
 	// Create template function map using the same functions as sarin package
-	// Use nil for fileCache during validation - templates are only parsed, not executed
+	// fileCache is nil because templates are only parsed here, not executed
 	randSource := sarin.NewDefaultRandSource()
 	funcMap := sarin.NewDefaultTemplateFuncMap(randSource, nil)
 

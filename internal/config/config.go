@@ -27,27 +27,29 @@ import (
 )
 
 var Defaults = struct {
-	UserAgent      string
-	Method         string
-	RequestTimeout time.Duration
-	Concurrency    uint
-	ShowConfig     bool
-	Progress       ConfigProgressType
-	Insecure       bool
-	Output         ConfigOutputType
-	DryRun         bool
-	LogLevel       string
+	UserAgent       string
+	Method          string
+	RequestTimeout  time.Duration
+	MaxResponseBody uint64
+	Concurrency     uint
+	ShowConfig      bool
+	Progress        ConfigProgressType
+	Insecure        bool
+	Output          ConfigOutputType
+	DryRun          bool
+	LogLevel        string
 }{
-	UserAgent:      "Sarin/" + version.Version,
-	Method:         "GET",
-	RequestTimeout: time.Second * 10,
-	Concurrency:    1,
-	ShowConfig:     false,
-	Progress:       ConfigProgressTypeBar,
-	Insecure:       false,
-	Output:         ConfigOutputTypeTable,
-	DryRun:         false,
-	LogLevel:       "error",
+	UserAgent:       "Sarin/" + version.Version,
+	Method:          "GET",
+	RequestTimeout:  time.Second * 10,
+	MaxResponseBody: 10 << 20, // 10 MiB
+	Concurrency:     1,
+	ShowConfig:      false,
+	Progress:        ConfigProgressTypeBar,
+	Insecure:        false,
+	Output:          ConfigOutputTypeTable,
+	DryRun:          false,
+	LogLevel:        "error",
 }
 
 var (
@@ -82,28 +84,29 @@ var (
 )
 
 type Config struct {
-	ShowConfig  *bool               `yaml:"showConfig,omitempty"`
-	Files       []types.ConfigFile  `yaml:"files,omitempty"`
-	Methods     []string            `yaml:"methods,omitempty"`
-	URL         *url.URL            `yaml:"url,omitempty"`
-	Timeout     *time.Duration      `yaml:"timeout,omitempty"`
-	Concurrency *uint               `yaml:"concurrency,omitempty"`
-	Requests    *uint64             `yaml:"requests,omitempty"`
-	Duration    *time.Duration      `yaml:"duration,omitempty"`
-	Progress    *ConfigProgressType `yaml:"progress,omitempty"`
-	Output      *ConfigOutputType   `yaml:"output,omitempty"`
-	Insecure    *bool               `yaml:"insecure,omitempty"`
-	DryRun      *bool               `yaml:"dryRun,omitempty"`
-	Params      types.Params        `yaml:"params,omitempty"`
-	Headers     types.Headers       `yaml:"headers,omitempty"`
-	Cookies     types.Cookies       `yaml:"cookies,omitempty"`
-	Bodies      []string            `yaml:"bodies,omitempty"`
-	Proxies     types.Proxies       `yaml:"proxies,omitempty"`
-	Values      []string            `yaml:"values,omitempty"`
-	Lua         []string            `yaml:"lua,omitempty"`
-	Js          []string            `yaml:"js,omitempty"`
-	LogLevel    *string             `yaml:"logLevel,omitempty"`
-	LogFile     *string             `yaml:"logFile,omitempty"`
+	ShowConfig      *bool               `yaml:"showConfig,omitempty"`
+	Files           []types.ConfigFile  `yaml:"files,omitempty"`
+	Methods         []string            `yaml:"methods,omitempty"`
+	URL             *url.URL            `yaml:"url,omitempty"`
+	Timeout         *time.Duration      `yaml:"timeout,omitempty"`
+	MaxResponseBody *uint64             `yaml:"maxResponseBody,omitempty"`
+	Concurrency     *uint               `yaml:"concurrency,omitempty"`
+	Requests        *uint64             `yaml:"requests,omitempty"`
+	Duration        *time.Duration      `yaml:"duration,omitempty"`
+	Progress        *ConfigProgressType `yaml:"progress,omitempty"`
+	Output          *ConfigOutputType   `yaml:"output,omitempty"`
+	Insecure        *bool               `yaml:"insecure,omitempty"`
+	DryRun          *bool               `yaml:"dryRun,omitempty"`
+	Params          types.Params        `yaml:"params,omitempty"`
+	Headers         types.Headers       `yaml:"headers,omitempty"`
+	Cookies         types.Cookies       `yaml:"cookies,omitempty"`
+	Bodies          []string            `yaml:"bodies,omitempty"`
+	Proxies         types.Proxies       `yaml:"proxies,omitempty"`
+	Values          []string            `yaml:"values,omitempty"`
+	Lua             []string            `yaml:"lua,omitempty"`
+	Js              []string            `yaml:"js,omitempty"`
+	LogLevel        *string             `yaml:"logLevel,omitempty"`
+	LogFile         *string             `yaml:"logFile,omitempty"`
 }
 
 func (config Config) MarshalYAML() (any, error) {
@@ -176,6 +179,9 @@ func (config Config) MarshalYAML() (any, error) {
 	}
 	if config.Timeout != nil {
 		addField(content, "timeout", toNode(*config.Timeout), "")
+	}
+	if config.MaxResponseBody != nil {
+		addField(content, "maxResponseBody", toNode(types.FormatByteSize(*config.MaxResponseBody)), "")
 	}
 	if config.Concurrency != nil {
 		addField(content, "concurrency", toNode(*config.Concurrency), "")
@@ -301,6 +307,9 @@ func (config *Config) Merge(newConfig *Config) {
 	if newConfig.Timeout != nil {
 		config.Timeout = newConfig.Timeout
 	}
+	if newConfig.MaxResponseBody != nil {
+		config.MaxResponseBody = newConfig.MaxResponseBody
+	}
 	if newConfig.Concurrency != nil {
 		config.Concurrency = newConfig.Concurrency
 	}
@@ -379,6 +388,9 @@ func (config *Config) SetDefaults() {
 	if config.Timeout == nil {
 		config.Timeout = &Defaults.RequestTimeout
 	}
+	if config.MaxResponseBody == nil {
+		config.MaxResponseBody = &Defaults.MaxResponseBody
+	}
 	if config.Concurrency == nil {
 		config.Concurrency = new(Defaults.Concurrency)
 	}
@@ -452,6 +464,14 @@ func (config Config) Validate() error {
 
 	if config.Timeout == nil || *config.Timeout < 1 {
 		validationErrors = append(validationErrors, types.NewFieldValidationError("Timeout", "0", errors.New("timeout must be greater than 0")))
+	}
+
+	if config.MaxResponseBody != nil && *config.MaxResponseBody > types.ByteSizeLimit {
+		validationErrors = append(validationErrors, types.NewFieldValidationError(
+			"MaxResponseBody",
+			types.FormatByteSize(*config.MaxResponseBody),
+			errors.New("max response body must not exceed "+types.FormatByteSize(types.ByteSizeLimit)),
+		))
 	}
 
 	if config.ShowConfig == nil {
@@ -632,12 +652,19 @@ func ReadAllConfigs() *Config {
 
 	for _, configFile := range append(envConfig.Files, cliConf.Files...) {
 		fileConfig, err := parseConfigFile(configFile, 10)
+
+		// A nested configFile fails under its own name, not the one given on the command line.
+		path := configFile.Path()
+		if configFileErr, ok := errors.AsType[types.ConfigFileError](err); ok {
+			path = configFileErr.Path
+		}
+
 		_ = utilsErr.MustHandle(err,
 			utilsErr.OnType(func(err types.ConfigFileReadError) error {
 				cliParser.PrintHelp()
 				fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 					StyleYellow.Render(
-						fmt.Sprintf("\nFailed to read config file (%s): ", configFile.Path())+err.Error(),
+						fmt.Sprintf("\nFailed to read config file (%s): ", path)+err.Error(),
 					),
 				))
 				os.Exit(1)
@@ -646,14 +673,14 @@ func ReadAllConfigs() *Config {
 			utilsErr.OnType(func(err types.UnmarshalError) error {
 				fmt.Fprint(os.Stderr, lipgloss.Sprintln(
 					StyleYellow.Render(
-						fmt.Sprintf("\nFailed to parse config file (%s): ", configFile.Path())+err.Error(),
+						fmt.Sprintf("\nFailed to parse config file (%s): ", path)+err.Error(),
 					),
 				))
 				os.Exit(1)
 				return nil
 			}),
 			utilsErr.OnType(func(err types.FieldParseErrors) error {
-				printParseErrors(fmt.Sprintf("CONFIG FILE '%s'", configFile.Path()), err.Errors...)
+				printParseErrors(fmt.Sprintf("CONFIG FILE '%s'", path), err.Errors...)
 				os.Exit(1)
 				return nil
 			}),
@@ -669,7 +696,7 @@ func ReadAllConfigs() *Config {
 
 // parseConfigFile recursively parses a config file and its nested files up to maxDepth levels.
 // Returns the merged configuration or an error if parsing fails.
-// It can return the following errors:
+// It can return the following errors, each wrapped in a types.ConfigFileError naming the file:
 // - types.ConfigFileReadError
 // - types.UnmarshalError
 // - types.FieldParseErrors
@@ -677,7 +704,7 @@ func parseConfigFile(configFile types.ConfigFile, maxDepth int) (*Config, error)
 	configFileParser := NewConfigFileParser(configFile)
 	fileConfig, err := configFileParser.Parse()
 	if err != nil {
-		return nil, err
+		return nil, types.NewConfigFileError(configFile.Path(), err)
 	}
 
 	if maxDepth <= 0 {
@@ -715,7 +742,7 @@ func validateScriptSource(script string) error {
 		return types.ErrScriptEmpty
 	}
 
-	// Not a file/URL reference - it's an inline script
+	// Not a file/URL reference, so it's an inline script
 	if !strings.HasPrefix(script, "@") {
 		return nil
 	}
@@ -725,7 +752,7 @@ func validateScriptSource(script string) error {
 		return nil
 	}
 
-	// It's a file or URL reference - validate the source
+	// It's a file or URL reference, so validate the source
 	source := script[1:] // Remove the @ prefix
 
 	if source == "" {
@@ -744,7 +771,7 @@ func validateScriptSource(script string) error {
 		return nil
 	}
 
-	// It's a file path - basic validation (not empty, checked above)
+	// It's a file path, already checked to be non-empty above
 	return nil
 }
 
@@ -822,7 +849,7 @@ func (m printConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m printConfigModel) View() tea.View {
-	// AltScreen and MouseMode were program options in bubbletea v1; in v2 they
+	// AltScreen and MouseMode were program options in bubbletea v1, in v2 they
 	// are view properties, so every return path has to declare them.
 	newView := func(s string) tea.View {
 		v := tea.NewView(s)

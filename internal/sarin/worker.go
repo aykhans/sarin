@@ -1,12 +1,16 @@
 package sarin
 
 import (
+	"errors"
+	"net"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/valyala/fasthttp"
 	"go.aykhans.me/sarin/internal/script"
+	"go.aykhans.me/sarin/internal/types"
 )
 
 const dryRunResponseKey = "dry-run"
@@ -29,9 +33,36 @@ func statusCodeToString(code int) string {
 	return strconv.Itoa(code)
 }
 
+// responseErrorKey drops the local address, whose port would mint a stats entry per connection.
+func responseErrorKey(err error) string {
+	if errors.Is(err, fasthttp.ErrBodyTooLarge) {
+		return types.ErrResponseBodyTooLarge.Error()
+	}
+
+	message := err.Error()
+
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) || opErr.Source == nil {
+		return message
+	}
+
+	withoutSource := *opErr
+	withoutSource.Source = nil
+	return strings.Replace(message, opErr.Error(), withoutSource.Error(), 1)
+}
+
+// requestErrorKey keys a generation failure by its source instead of its message.
+// A script picks its own URLs and error texts, so the message would mint a new
+// stats entry per request. The full message still goes to the runtime log.
+func requestErrorKey(err error) string {
+	if chainErr, ok := errors.AsType[types.ScriptChainError](err); ok {
+		return chainErr.EngineType + " script[" + strconv.Itoa(chainErr.Index) + "] error"
+	}
+	return "request generation error"
+}
+
 func (s sarin) Worker(
 	jobs <-chan struct{},
-	hostClientGenerator HostClientGenerator,
 	counter *atomic.Uint64,
 	sendLog runtimeLogger,
 	sendRespLog respLogger,
@@ -53,6 +84,9 @@ func (s sarin) Worker(
 		defer scriptTransformer.Close()
 	}
 
+	nextClientIndex := newClientIndexGenerator(len(s.hostClients))
+	bindScriptProxy := s.newScriptProxyBinder(scriptTransformer)
+
 	requestGenerator, isDynamic := NewRequestGenerator(
 		s.methods, s.requestURL, s.params, s.headers, s.cookies, s.bodies, s.values, s.fileCache, scriptTransformer,
 	)
@@ -60,25 +94,35 @@ func (s sarin) Worker(
 	if s.dryRun {
 		switch {
 		case s.collectStats && isDynamic:
-			s.workerDryRunStatsWithDynamic(jobs, req, requestGenerator, counter, sendLog)
+			s.workerDryRunStatsWithDynamic(jobs, req, requestGenerator, nextClientIndex, bindScriptProxy, counter, sendLog)
 		case s.collectStats && !isDynamic:
 			s.workerDryRunStatsWithStatic(jobs, req, requestGenerator, counter, sendLog)
 		case !s.collectStats && isDynamic:
-			s.workerDryRunNoStatsWithDynamic(jobs, req, requestGenerator, counter, sendLog)
+			s.workerDryRunNoStatsWithDynamic(jobs, req, requestGenerator, nextClientIndex, bindScriptProxy, counter, sendLog)
 		default:
 			s.workerDryRunNoStatsWithStatic(jobs, req, requestGenerator, counter, sendLog)
 		}
 	} else {
 		switch {
 		case s.collectStats && isDynamic:
-			s.workerStatsWithDynamic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendLog, sendRespLog)
+			s.workerStatsWithDynamic(jobs, req, resp, requestGenerator, nextClientIndex, bindScriptProxy, counter, sendLog, sendRespLog)
 		case s.collectStats && !isDynamic:
-			s.workerStatsWithStatic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendLog, sendRespLog)
+			s.workerStatsWithStatic(jobs, req, resp, requestGenerator, nextClientIndex, counter, sendLog, sendRespLog)
 		case !s.collectStats && isDynamic:
-			s.workerNoStatsWithDynamic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendLog, sendRespLog)
+			s.workerNoStatsWithDynamic(jobs, req, resp, requestGenerator, nextClientIndex, bindScriptProxy, counter, sendLog, sendRespLog)
 		default:
-			s.workerNoStatsWithStatic(jobs, req, resp, requestGenerator, hostClientGenerator, counter, sendLog, sendRespLog)
+			s.workerNoStatsWithStatic(jobs, req, resp, requestGenerator, nextClientIndex, counter, sendLog, sendRespLog)
 		}
+	}
+}
+
+// newScriptProxyBinder returns a func that sends the scripts' http.* calls through proxy i.
+func (s sarin) newScriptProxyBinder(scriptTransformer *script.Transformer) func(i int) {
+	if scriptTransformer == nil || scriptTransformer.IsEmpty() {
+		return func(int) {}
+	}
+	return func(i int) {
+		scriptTransformer.SetHTTPDoer(s.scriptHTTPClients[i])
 	}
 }
 
@@ -87,7 +131,8 @@ func (s sarin) workerStatsWithDynamic(
 	req *fasthttp.Request,
 	resp *fasthttp.Response,
 	requestGenerator RequestGenerator,
-	hostClientGenerator HostClientGenerator,
+	nextClientIndex clientIndexGenerator,
+	bindScriptProxy func(int),
 	counter *atomic.Uint64,
 	sendLog runtimeLogger,
 	sendRespLog respLogger,
@@ -95,19 +140,22 @@ func (s sarin) workerStatsWithDynamic(
 	for range jobs {
 		req.Reset()
 
+		// Bound before generation so scripts' http.* calls use the main request's proxy.
+		clientIndex := nextClientIndex()
+		bindScriptProxy(clientIndex)
 		if err := requestGenerator(req); err != nil {
-			s.responses.Add(err.Error(), 0)
+			s.responses.Add(requestErrorKey(err), 0)
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 			continue
 		}
 
 		startTime := time.Now()
-		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
+		err := s.hostClients[clientIndex].DoTimeout(req, resp, s.timeout)
 		respDuration := time.Since(startTime)
 
 		if err != nil {
-			s.responses.Add(err.Error(), respDuration)
+			s.responses.Add(responseErrorKey(err), respDuration)
 		} else {
 			s.responses.Add(statusCodeToString(resp.StatusCode()), respDuration)
 			sendRespLog(respDuration, resp)
@@ -121,15 +169,16 @@ func (s sarin) workerStatsWithStatic(
 	req *fasthttp.Request,
 	resp *fasthttp.Response,
 	requestGenerator RequestGenerator,
-	hostClientGenerator HostClientGenerator,
+	nextClientIndex clientIndexGenerator,
 	counter *atomic.Uint64,
 	sendLog runtimeLogger,
 	sendRespLog respLogger,
 ) {
 	if err := requestGenerator(req); err != nil {
-		// Static request generation failed - record all jobs as errors
+		// Static request generation failed, so record all jobs as errors
+		errorKey := requestErrorKey(err)
 		for range jobs {
-			s.responses.Add(err.Error(), 0)
+			s.responses.Add(errorKey, 0)
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 		}
@@ -138,10 +187,10 @@ func (s sarin) workerStatsWithStatic(
 
 	for range jobs {
 		startTime := time.Now()
-		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
+		err := s.hostClients[nextClientIndex()].DoTimeout(req, resp, s.timeout)
 		respDuration := time.Since(startTime)
 		if err != nil {
-			s.responses.Add(err.Error(), respDuration)
+			s.responses.Add(responseErrorKey(err), respDuration)
 		} else {
 			s.responses.Add(statusCodeToString(resp.StatusCode()), respDuration)
 			sendRespLog(respDuration, resp)
@@ -155,20 +204,24 @@ func (s sarin) workerNoStatsWithDynamic(
 	req *fasthttp.Request,
 	resp *fasthttp.Response,
 	requestGenerator RequestGenerator,
-	hostClientGenerator HostClientGenerator,
+	nextClientIndex clientIndexGenerator,
+	bindScriptProxy func(int),
 	counter *atomic.Uint64,
 	sendLog runtimeLogger,
 	sendRespLog respLogger,
 ) {
 	for range jobs {
 		req.Reset()
+		// Bound before generation so scripts' http.* calls use the main request's proxy.
+		clientIndex := nextClientIndex()
+		bindScriptProxy(clientIndex)
 		if err := requestGenerator(req); err != nil {
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 			continue
 		}
 		startTime := time.Now()
-		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
+		err := s.hostClients[clientIndex].DoTimeout(req, resp, s.timeout)
 		if err == nil {
 			sendRespLog(time.Since(startTime), resp)
 		}
@@ -181,7 +234,7 @@ func (s sarin) workerNoStatsWithStatic(
 	req *fasthttp.Request,
 	resp *fasthttp.Response,
 	requestGenerator RequestGenerator,
-	hostClientGenerator HostClientGenerator,
+	nextClientIndex clientIndexGenerator,
 	counter *atomic.Uint64,
 	sendLog runtimeLogger,
 	sendRespLog respLogger,
@@ -189,7 +242,7 @@ func (s sarin) workerNoStatsWithStatic(
 	if err := requestGenerator(req); err != nil {
 		sendLog(runtimeLogLevelError, err.Error())
 
-		// Static request generation failed - just count the jobs without sending
+		// Static request generation failed, so just count the jobs without sending
 		for range jobs {
 			counter.Add(1)
 		}
@@ -198,7 +251,7 @@ func (s sarin) workerNoStatsWithStatic(
 
 	for range jobs {
 		startTime := time.Now()
-		err := hostClientGenerator().DoTimeout(req, resp, s.timeout)
+		err := s.hostClients[nextClientIndex()].DoTimeout(req, resp, s.timeout)
 		if err == nil {
 			sendRespLog(time.Since(startTime), resp)
 		}
@@ -210,14 +263,18 @@ func (s sarin) workerDryRunStatsWithDynamic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	requestGenerator RequestGenerator,
+	nextClientIndex clientIndexGenerator,
+	bindScriptProxy func(int),
 	counter *atomic.Uint64,
 	sendLog runtimeLogger,
 ) {
 	for range jobs {
 		req.Reset()
+		// Nothing is sent, this only binds a proxy for the scripts' http.* calls.
+		bindScriptProxy(nextClientIndex())
 		startTime := time.Now()
 		if err := requestGenerator(req); err != nil {
-			s.responses.Add(err.Error(), time.Since(startTime))
+			s.responses.Add(requestErrorKey(err), time.Since(startTime))
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 			continue
@@ -235,9 +292,10 @@ func (s sarin) workerDryRunStatsWithStatic(
 	sendLog runtimeLogger,
 ) {
 	if err := requestGenerator(req); err != nil {
-		// Static request generation failed - record all jobs as errors
+		// Static request generation failed, so record all jobs as errors
+		errorKey := requestErrorKey(err)
 		for range jobs {
-			s.responses.Add(err.Error(), 0)
+			s.responses.Add(errorKey, 0)
 			sendLog(runtimeLogLevelError, err.Error())
 			counter.Add(1)
 		}
@@ -254,11 +312,15 @@ func (s sarin) workerDryRunNoStatsWithDynamic(
 	jobs <-chan struct{},
 	req *fasthttp.Request,
 	requestGenerator RequestGenerator,
+	nextClientIndex clientIndexGenerator,
+	bindScriptProxy func(int),
 	counter *atomic.Uint64,
 	sendLog runtimeLogger,
 ) {
 	for range jobs {
 		req.Reset()
+		// Nothing is sent, this only binds a proxy for the scripts' http.* calls.
+		bindScriptProxy(nextClientIndex())
 		if err := requestGenerator(req); err != nil {
 			sendLog(runtimeLogLevelError, err.Error())
 		}
