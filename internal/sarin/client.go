@@ -19,6 +19,37 @@ import (
 // clientIndexGenerator returns the index of the host client (and proxy) to use next.
 type clientIndexGenerator func() int
 
+// dualStackLookupTimeout bounds the dial-policy lookup. A timeout falls back to dual-stack.
+const dualStackLookupTimeout = 5 * time.Second
+
+// needsDualStack reports whether the host is IPv6-only. Otherwise IPv4 is used, as mixing families is slower.
+func needsDualStack(ctx context.Context, host string, timeout time.Duration) bool {
+	name := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		name = h
+	}
+
+	if ip := net.ParseIP(name); ip != nil {
+		return ip.To4() == nil
+	}
+
+	resolveCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ips, err := net.DefaultResolver.LookupIP(resolveCtx, "ip", name)
+	if err != nil {
+		// Leave it on so the dial reports the real error rather than "no dns entries".
+		return true
+	}
+
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // NewHostClients creates a list of fasthttp.HostClient instances for the given proxies.
 // If no proxies are provided, a single client without a proxy is returned.
 // It can return the following errors:
@@ -75,7 +106,7 @@ func NewHostClients(
 	client := &fasthttp.HostClient{
 		MaxConns:      safeUintToInt(maxConns),
 		IsTLS:         isTLS,
-		DialDualStack: true,
+		DialDualStack: needsDualStack(ctx, requestURL.Host, dualStackLookupTimeout),
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: skipVerify, //nolint:gosec
 		},
@@ -120,9 +151,9 @@ func NewProxyDialFuncWithTimeout(ctx context.Context, proxyURL *url.URL) (fastht
 	case "socks5h":
 		return fasthttpSocksDialer(ctx, proxyURL, false)
 	case "http":
-		return fasthttpConnectDialer(proxyURL, false), nil
+		return fasthttpConnectDialer(ctx, proxyURL, false), nil
 	case "https":
-		return fasthttpConnectDialer(proxyURL, true), nil
+		return fasthttpConnectDialer(ctx, proxyURL, true), nil
 	default:
 		return nil, types.NewProxyUnsupportedSchemeError(proxyURL.Scheme)
 	}
@@ -231,7 +262,7 @@ func resolveIPv4First(ctx context.Context, addr string, timeout time.Duration) (
 //
 // The returned dial function can return the following errors:
 //   - types.ProxyDialError
-func fasthttpConnectDialer(proxyURL *url.URL, useTLS bool) fasthttp.DialFuncWithTimeout {
+func fasthttpConnectDialer(ctx context.Context, proxyURL *url.URL, useTLS bool) fasthttp.DialFuncWithTimeout {
 	defaultPort := "80"
 	if useTLS {
 		defaultPort = "443"
@@ -253,10 +284,16 @@ func fasthttpConnectDialer(proxyURL *url.URL, useTLS bool) fasthttp.DialFuncWith
 
 	proxyStr := proxyURL.String()
 
+	// Decided here rather than per dial, so the lookup never eats into a dial's timeout.
+	dial := fasthttp.DialTimeout
+	if needsDualStack(ctx, proxyAddr, dualStackLookupTimeout) {
+		dial = fasthttp.DialDualStackTimeout
+	}
+
 	return func(addr string, timeout time.Duration) (net.Conn, error) {
 		// Establish TCP connection to proxy with timeout
 		start := time.Now()
-		conn, err := fasthttp.DialDualStackTimeout(proxyAddr, timeout)
+		conn, err := dial(proxyAddr, timeout)
 		if err != nil {
 			return nil, types.NewProxyDialError(proxyStr, err)
 		}
