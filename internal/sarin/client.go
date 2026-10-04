@@ -19,35 +19,88 @@ import (
 // clientIndexGenerator returns the index of the host client (and proxy) to use next.
 type clientIndexGenerator func() int
 
-// dualStackLookupTimeout bounds the dial-policy lookup. A timeout falls back to dual-stack.
-const dualStackLookupTimeout = 5 * time.Second
+// preferIPv4Resolver hides a host's IPv6 addresses whenever it also has IPv4 ones.
+type preferIPv4Resolver struct{}
 
-// needsDualStack reports whether the host is IPv6-only. Otherwise IPv4 is used, as mixing families is slower.
-func needsDualStack(ctx context.Context, host string, timeout time.Duration) bool {
-	name := host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		name = h
-	}
+func (preferIPv4Resolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return lookupPreferred(ctx, host, true)
+}
 
-	if ip := net.ParseIP(name); ip != nil {
-		return ip.To4() == nil
-	}
+// preferIPv6Resolver is the mirror of preferIPv4Resolver, used for the fallback dial.
+type preferIPv6Resolver struct{}
 
-	resolveCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+func (preferIPv6Resolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return lookupPreferred(ctx, host, false)
+}
 
-	ips, err := net.DefaultResolver.LookupIP(resolveCtx, "ip", name)
+// lookupPreferred resolves host and keeps only the wanted family, unless that family is absent.
+func lookupPreferred(ctx context.Context, host string, wantIPv4 bool) ([]net.IPAddr, error) {
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
-		// Leave it on so the dial reports the real error rather than "no dns entries".
-		return true
+		return nil, err
 	}
 
+	preferred := make([]net.IPAddr, 0, len(ips))
 	for _, ip := range ips {
-		if ip.To4() != nil {
-			return false
+		if (ip.IP.To4() != nil) == wantIPv4 {
+			preferred = append(preferred, ip)
 		}
 	}
-	return true
+	if len(preferred) > 0 {
+		return preferred, nil
+	}
+	return ips, nil
+}
+
+// preferIPv4DialTimeoutShare leaves half the timeout for the IPv6 retry.
+const preferIPv4DialTimeoutShare = 2
+
+// preferIPv4Dialer dials over IPv4 and retries over IPv6 alone when that fails.
+type preferIPv4Dialer struct {
+	ipv4 *fasthttp.TCPDialer
+	ipv6 *fasthttp.TCPDialer
+}
+
+// dialerConcurrency matches the limit on fasthttp own package-level dialer.
+const dialerConcurrency = 1000
+
+// dialer is shared so all clients use one DNS cache.
+var dialer = &preferIPv4Dialer{
+	ipv4: &fasthttp.TCPDialer{Resolver: preferIPv4Resolver{}, Concurrency: dialerConcurrency},
+	ipv6: &fasthttp.TCPDialer{Resolver: preferIPv6Resolver{}, Concurrency: dialerConcurrency},
+}
+
+// DialTimeout dials addr, which must carry a port.
+func (d *preferIPv4Dialer) DialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
+	// fasthttp passes 0 from its pooled dial path.
+	if timeout <= 0 {
+		timeout = fasthttp.DefaultDialTimeout
+	}
+	deadline := time.Now().Add(timeout)
+
+	conn, err := d.ipv4.DialDualStackTimeout(addr, timeout/preferIPv4DialTimeoutShare)
+	if err == nil {
+		return conn, nil
+	}
+
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return nil, err
+	}
+
+	conn, fallbackErr := d.ipv6.DialDualStackTimeout(addr, remaining)
+	if fallbackErr != nil {
+		// Report the IPv4 error, not the fallback one.
+		return nil, err
+	}
+	return conn, nil
+}
+
+// dialFunc fills in the default port, which fasthttp skips for a custom dial func.
+func (d *preferIPv4Dialer) dialFunc(isTLS bool) fasthttp.DialFuncWithTimeout {
+	return func(addr string, timeout time.Duration) (net.Conn, error) {
+		return d.DialTimeout(fasthttp.AddMissingPort(addr, isTLS), timeout)
+	}
 }
 
 // NewHostClients creates a list of fasthttp.HostClient instances for the given proxies.
@@ -104,9 +157,9 @@ func NewHostClients(
 	}
 
 	client := &fasthttp.HostClient{
-		MaxConns:      safeUintToInt(maxConns),
-		IsTLS:         isTLS,
-		DialDualStack: needsDualStack(ctx, requestURL.Host, dualStackLookupTimeout),
+		MaxConns:    safeUintToInt(maxConns),
+		IsTLS:       isTLS,
+		DialTimeout: dialer.dialFunc(isTLS),
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: skipVerify, //nolint:gosec
 		},
@@ -151,9 +204,9 @@ func NewProxyDialFuncWithTimeout(ctx context.Context, proxyURL *url.URL) (fastht
 	case "socks5h":
 		return fasthttpSocksDialer(ctx, proxyURL, false)
 	case "http":
-		return fasthttpConnectDialer(ctx, proxyURL, false), nil
+		return fasthttpConnectDialer(proxyURL, false), nil
 	case "https":
-		return fasthttpConnectDialer(ctx, proxyURL, true), nil
+		return fasthttpConnectDialer(proxyURL, true), nil
 	default:
 		return nil, types.NewProxyUnsupportedSchemeError(proxyURL.Scheme)
 	}
@@ -262,7 +315,7 @@ func resolveIPv4First(ctx context.Context, addr string, timeout time.Duration) (
 //
 // The returned dial function can return the following errors:
 //   - types.ProxyDialError
-func fasthttpConnectDialer(ctx context.Context, proxyURL *url.URL, useTLS bool) fasthttp.DialFuncWithTimeout {
+func fasthttpConnectDialer(proxyURL *url.URL, useTLS bool) fasthttp.DialFuncWithTimeout {
 	defaultPort := "80"
 	if useTLS {
 		defaultPort = "443"
@@ -284,16 +337,10 @@ func fasthttpConnectDialer(ctx context.Context, proxyURL *url.URL, useTLS bool) 
 
 	proxyStr := proxyURL.String()
 
-	// Decided here rather than per dial, so the lookup never eats into a dial's timeout.
-	dial := fasthttp.DialTimeout
-	if needsDualStack(ctx, proxyAddr, dualStackLookupTimeout) {
-		dial = fasthttp.DialDualStackTimeout
-	}
-
 	return func(addr string, timeout time.Duration) (net.Conn, error) {
 		// Establish TCP connection to proxy with timeout
 		start := time.Now()
-		conn, err := dial(proxyAddr, timeout)
+		conn, err := dialer.DialTimeout(proxyAddr, timeout)
 		if err != nil {
 			return nil, types.NewProxyDialError(proxyStr, err)
 		}
