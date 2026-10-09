@@ -270,7 +270,8 @@ func (s sarin) streamProgress(
 			stop:      stopCtrl.Stop,
 		}
 
-		program = tea.NewProgram(model)
+		// Sarin handles SIGINT/SIGTERM itself.
+		program = tea.NewProgram(model, tea.WithoutSignalHandler())
 	} else {
 		model := infiniteProgressModel{
 			spinner: spinner.New(
@@ -300,7 +301,8 @@ func (s sarin) streamProgress(
 			quit:      false,
 		}
 
-		program = tea.NewProgram(model)
+		// Sarin handles SIGINT/SIGTERM itself.
+		program = tea.NewProgram(model, tea.WithoutSignalHandler())
 	}
 
 	stopCtrl.AttachProgram(program)
