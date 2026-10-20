@@ -251,7 +251,8 @@ func (config Config) MarshalYAML() (any, error) {
 	return root, nil
 }
 
-func (config Config) Print() bool {
+// Print shows the final config and reports whether to start the run.
+func (config Config) Print(ctx context.Context, stopCtrl *sarin.StopController) bool {
 	configYAML, err := yaml.Marshal(config)
 	if err != nil {
 		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render("Error marshaling config to yaml: "+err.Error())))
@@ -284,16 +285,19 @@ func (config Config) Print() bool {
 	}
 
 	p := tea.NewProgram(
-		printConfigModel{content: strings.Trim(content, "\n"), rawContent: configYAML},
+		printConfigModel{content: strings.Trim(content, "\n"), rawContent: configYAML, stop: stopCtrl.Stop},
+		tea.WithoutSignalHandler(),
 	)
 
-	m, err := p.Run()
+	stopQuit := context.AfterFunc(ctx, p.Quit)
+	m, err := stopCtrl.RunProgram(p)
+	stopQuit()
 	if err != nil {
 		fmt.Fprint(os.Stderr, lipgloss.Sprintln(StyleRed.Render(err.Error())))
 		os.Exit(1)
 	}
 
-	return m.(printConfigModel).start //nolint:forcetypeassert // m is guaranteed to be of type printConfigModel as it was the only model passed to tea.NewProgram
+	return m.(printConfigModel).start && ctx.Err() == nil //nolint:forcetypeassert // m is guaranteed to be of type printConfigModel as it was the only model passed to tea.NewProgram
 }
 
 func (config *Config) Merge(newConfig *Config) {
@@ -426,7 +430,7 @@ func (config *Config) SetDefaults() {
 // Validate validates the config fields.
 // It can return the following errors:
 // - types.FieldValidationErrors
-func (config Config) Validate() error {
+func (config Config) Validate(ctx context.Context) error {
 	validationErrors := make([]types.FieldValidationError, 0)
 
 	if len(config.Methods) == 0 {
@@ -569,7 +573,7 @@ func (config Config) Validate() error {
 	}
 
 	// Create a context with timeout for script validation (loading from URLs)
-	scriptCtx, scriptCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	scriptCtx, scriptCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer scriptCancel()
 
 	for i, scriptSrc := range config.Lua {
@@ -580,8 +584,8 @@ func (config Config) Validate() error {
 			)
 			continue
 		}
-		// Validate script syntax
-		if err := script.ValidateScript(scriptCtx, scriptSrc, script.EngineTypeLua); err != nil {
+		// Validate script syntax, ignoring fetches aborted by a stop
+		if err := script.ValidateScript(scriptCtx, scriptSrc, script.EngineTypeLua); err != nil && !errors.Is(err, context.Canceled) {
 			validationErrors = append(
 				validationErrors,
 				types.NewFieldValidationError(fmt.Sprintf("Lua[%d]", i), scriptSrc, err),
@@ -597,8 +601,8 @@ func (config Config) Validate() error {
 			)
 			continue
 		}
-		// Validate script syntax
-		if err := script.ValidateScript(scriptCtx, scriptSrc, script.EngineTypeJavaScript); err != nil {
+		// Validate script syntax, ignoring fetches aborted by a stop
+		if err := script.ValidateScript(scriptCtx, scriptSrc, script.EngineTypeJavaScript); err != nil && !errors.Is(err, context.Canceled) {
 			validationErrors = append(
 				validationErrors,
 				types.NewFieldValidationError(fmt.Sprintf("Js[%d]", i), scriptSrc, err),
@@ -616,7 +620,8 @@ func (config Config) Validate() error {
 	return nil
 }
 
-func ReadAllConfigs() *Config {
+// ReadAllConfigs reads all config sources and returns early if ctx is cancelled.
+func ReadAllConfigs(ctx context.Context) *Config {
 	envParser := NewConfigENVParser("SARIN")
 	envConfig, err := envParser.Parse()
 	_ = utilsErr.MustHandle(err,
@@ -651,7 +656,10 @@ func ReadAllConfigs() *Config {
 	)
 
 	for _, configFile := range append(envConfig.Files, cliConf.Files...) {
-		fileConfig, err := parseConfigFile(configFile, 10)
+		fileConfig, err := parseConfigFile(ctx, configFile, 10)
+		if err != nil && ctx.Err() != nil {
+			return envConfig
+		}
 
 		// A nested configFile fails under its own name, not the one given on the command line.
 		path := configFile.Path()
@@ -700,9 +708,9 @@ func ReadAllConfigs() *Config {
 // - types.ConfigFileReadError
 // - types.UnmarshalError
 // - types.FieldParseErrors
-func parseConfigFile(configFile types.ConfigFile, maxDepth int) (*Config, error) {
+func parseConfigFile(ctx context.Context, configFile types.ConfigFile, maxDepth int) (*Config, error) {
 	configFileParser := NewConfigFileParser(configFile)
-	fileConfig, err := configFileParser.Parse()
+	fileConfig, err := configFileParser.ParseContext(ctx)
 	if err != nil {
 		return nil, types.NewConfigFileError(configFile.Path(), err)
 	}
@@ -712,7 +720,7 @@ func parseConfigFile(configFile types.ConfigFile, maxDepth int) (*Config, error)
 	}
 
 	for _, c := range fileConfig.Files {
-		innerFileConfig, err := parseConfigFile(c, maxDepth-1)
+		innerFileConfig, err := parseConfigFile(ctx, c, maxDepth-1)
 		if err != nil {
 			return nil, err
 		}
@@ -817,6 +825,7 @@ type printConfigModel struct {
 	statusMsg  string
 	ready      bool
 	start      bool
+	stop       func()
 }
 
 func (m printConfigModel) Init() tea.Cmd { return nil }
@@ -827,7 +836,10 @@ func (m printConfigModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "ctrl+c", "esc":
+		case "ctrl+c":
+			m.stop()
+			return m, tea.Quit
+		case "esc":
 			return m, tea.Quit
 		case "ctrl+s":
 			return m.saveContent()

@@ -35,7 +35,13 @@ func NewConfigFileParser(configFile types.ConfigFile) *ConfigFileParser {
 // - types.UnmarshalError
 // - types.FieldParseErrors
 func (parser ConfigFileParser) Parse() (*Config, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	return parser.ParseContext(context.Background())
+}
+
+// ParseContext is Parse with a parent context for remote fetches.
+// It can return the same errors as Parse.
+func (parser ConfigFileParser) ParseContext(parent context.Context) (*Config, error) {
+	ctx, cancel := context.WithTimeout(parent, time.Second*30)
 	defer cancel()
 
 	configFileData, err := fetchFile(ctx, parser.configFile.Path())

@@ -2,6 +2,8 @@ package sarin
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -68,23 +70,22 @@ func renderLogBox(logs []string) string {
 	return logChannelStyle.Render(b.String())
 }
 
-func helpLine(cancelling bool) string {
-	if cancelling {
+func helpLine(stopping bool) string {
+	if stopping {
 		return helpStyle.Render("Stopping... (Ctrl+C again to force)")
 	}
 	return helpStyle.Render("Press Ctrl+C to quit")
 }
 
 type progressModel struct {
-	progress   progress.Model
-	startTime  time.Time
-	logs       []string
-	counter    *atomic.Uint64
-	maxValue   uint64
-	showBar    bool
-	ctx        context.Context //nolint:containedctx
-	stop       func()
-	cancelling bool
+	progress  progress.Model
+	startTime time.Time
+	logs      []string
+	counter   *atomic.Uint64
+	maxValue  uint64
+	showBar   bool
+	ctx       context.Context //nolint:containedctx
+	stopCtrl  *StopController
 }
 
 func (m progressModel) Init() tea.Cmd {
@@ -95,8 +96,7 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
-			m.cancelling = true
-			m.stop()
+			m.stopCtrl.Stop()
 		}
 		return m, nil
 
@@ -150,7 +150,7 @@ func (m progressModel) View() tea.View {
 	}
 
 	b.WriteString("\n\n  ")
-	b.WriteString(helpLine(m.cancelling))
+	b.WriteString(helpLine(m.stopCtrl.Stopping()))
 	return tea.NewView(b.String())
 }
 
@@ -163,15 +163,14 @@ func progressTickCmd() tea.Cmd {
 var infiniteProgressStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#00D4FF"))
 
 type infiniteProgressModel struct {
-	spinner    spinner.Model
-	startTime  time.Time
-	counter    *atomic.Uint64
-	logs       []string
-	showBar    bool
-	ctx        context.Context //nolint:containedctx
-	quit       bool
-	stop       func()
-	cancelling bool
+	spinner   spinner.Model
+	startTime time.Time
+	counter   *atomic.Uint64
+	logs      []string
+	showBar   bool
+	ctx       context.Context //nolint:containedctx
+	quit      bool
+	stopCtrl  *StopController
 }
 
 func (m infiniteProgressModel) Init() tea.Cmd {
@@ -182,8 +181,7 @@ func (m infiniteProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
-			m.cancelling = true
-			m.stop()
+			m.stopCtrl.Stop()
 		}
 		return m, nil
 
@@ -219,7 +217,7 @@ func (m infiniteProgressModel) View() tea.View {
 	if !m.showBar {
 		if !m.quit {
 			b.WriteString("\n\n  ")
-			b.WriteString(helpLine(m.cancelling))
+			b.WriteString(helpLine(m.stopCtrl.Stopping()))
 		}
 		return tea.NewView(b.String())
 	}
@@ -240,7 +238,7 @@ func (m infiniteProgressModel) View() tea.View {
 		b.WriteString("  ")
 		b.WriteString(time.Since(m.startTime).Round(time.Second / 10).String())
 		b.WriteString("\n\n  ")
-		b.WriteString(helpLine(m.cancelling))
+		b.WriteString(helpLine(m.stopCtrl.Stopping()))
 	}
 	return tea.NewView(b.String())
 }
@@ -267,7 +265,7 @@ func (s sarin) streamProgress(
 			maxValue:  total,
 			showBar:   showBar,
 			ctx:       ctx,
-			stop:      stopCtrl.Stop,
+			stopCtrl:  stopCtrl,
 		}
 
 		// Sarin handles SIGINT/SIGTERM itself.
@@ -297,16 +295,13 @@ func (s sarin) streamProgress(
 			logs:      make([]string, logBoxLines),
 			showBar:   showBar,
 			ctx:       ctx,
-			stop:      stopCtrl.Stop,
+			stopCtrl:  stopCtrl,
 			quit:      false,
 		}
 
 		// Sarin handles SIGINT/SIGTERM itself.
 		program = tea.NewProgram(model, tea.WithoutSignalHandler())
 	}
-
-	stopCtrl.AttachProgram(program)
-	defer stopCtrl.AttachProgram(nil)
 
 	// Bubble Tea repaints once per message, so forwarding every log made the run
 	// wait on the terminal. Send only what the box shows, on a fixed cadence.
@@ -340,8 +335,8 @@ func (s sarin) streamProgress(
 		}
 	}()
 
-	if _, err := program.Run(); err != nil {
-		panic(err)
+	if _, err := stopCtrl.RunProgram(program); err != nil {
+		fmt.Fprintln(os.Stderr, "progress display: "+err.Error())
 	}
 
 	done <- struct{}{}
