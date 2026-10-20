@@ -337,7 +337,8 @@ func (s sarin) Start(stopCtrl *StopController) {
 		totalRequests = *s.totalRequests
 	}
 
-	onTerminal := IsInteractiveTerminal(os.Stdout.Fd())
+	// A background job would get SIGTTOU from the TUI, so it runs without one.
+	onTerminal := IsInteractiveTerminal(os.Stdout.Fd()) && isForeground(os.Stdout.Fd()) && isForeground(os.Stdin.Fd())
 	// The progress bar needs an interactive terminal to render.
 	showProgressBar := s.showProgress && onTerminal
 	// The bubbletea TUI hosts the bar and/or the live log box, so it runs whenever

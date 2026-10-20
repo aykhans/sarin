@@ -3,39 +3,78 @@ package sarin
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
+	"syscall"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/term"
 )
 
-const forceExitCode = 130
+const (
+	forceExitCode = 130
+	// forceExitWait bounds the wait for the program to restore the terminal.
+	forceExitWait = 2 * time.Second
+	// killingWait bounds the "killing..." write, which a stuck terminal blocks.
+	killingWait = 100 * time.Millisecond
+)
 
-// StopController coordinates a two-stage shutdown.
-//
-// The first Stop call cancels the supplied context so workers and the job
-// loop can drain. The second Stop call restores the terminal (if a bubbletea
-// program has been attached) and calls os.Exit(forceExitCode), bypassing any
-// in-flight captcha polls, Lua/JS scripts, or HTTP requests that would
-// otherwise keep the process alive.
+// StopController is the single place a run is stopped from.
+// The first Stop drains the run, the second exits at once.
 type StopController struct {
-	count   atomic.Int32
-	cancel  func()
-	mu      sync.Mutex
-	program *tea.Program
+	count       atomic.Int32
+	cancel      func()
+	mu          sync.Mutex
+	program     *tea.Program
+	programDone chan struct{} // closed when Run returns
+	ttyState    *term.State   // stdin before the program made it raw
 }
 
 func NewStopController(cancel func()) *StopController {
 	return &StopController{cancel: cancel}
 }
 
-// AttachProgram registers the active bubbletea program so the terminal state
-// can be restored before os.Exit on the forced shutdown path. Pass nil to
-// detach once the program has finished.
-func (s *StopController) AttachProgram(program *tea.Program) {
+// RunProgram runs p so a forced exit can quit it and wait for it.
+func (s *StopController) RunProgram(p *tea.Program) (tea.Model, error) {
+	var ttyState *term.State
+	if term.IsTerminal(os.Stdin.Fd()) {
+		ttyState, _ = term.GetState(os.Stdin.Fd())
+	}
+
+	done := make(chan struct{})
 	s.mu.Lock()
-	s.program = program
+	s.program, s.programDone, s.ttyState = p, done, ttyState
 	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		s.program, s.programDone, s.ttyState = nil, nil, nil
+		s.mu.Unlock()
+		close(done)
+	}()
+
+	return p.Run()
+}
+
+// ListenSignals routes SIGINT to Stop. SIGTERM comes from programs like timeout,
+// which may send it twice, so it only ever stops gracefully.
+func (s *StopController) ListenSignals() {
+	sigChan := make(chan os.Signal, 4)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	for sig := range sigChan {
+		if sig == syscall.SIGTERM {
+			s.stopGracefully()
+			continue
+		}
+		s.Stop()
+	}
+}
+
+// Stopping reports whether a stop has been requested.
+func (s *StopController) Stopping() bool {
+	return s.count.Load() > 0
 }
 
 func (s *StopController) Stop() {
@@ -43,13 +82,48 @@ func (s *StopController) Stop() {
 	case 1:
 		s.cancel()
 	case 2:
-		s.mu.Lock()
-		p := s.program
-		s.mu.Unlock()
-		if p != nil {
-			_ = p.ReleaseTerminal()
-		}
-		fmt.Fprintln(os.Stderr, "killing...")
-		os.Exit(forceExitCode)
+		go s.forceExit()
 	}
+}
+
+// stopGracefully starts the graceful stop unless a stop has already started.
+func (s *StopController) stopGracefully() {
+	if s.count.CompareAndSwap(0, 1) {
+		s.cancel()
+	}
+}
+
+// forceExit quits the program, waits up to forceExitWait for it, then exits.
+func (s *StopController) forceExit() {
+	s.mu.Lock()
+	p, programDone, ttyState := s.program, s.programDone, s.ttyState
+	s.mu.Unlock()
+
+	quit := make(chan struct{})
+	go func() {
+		if p != nil {
+			p.Quit()
+			<-programDone
+		}
+		close(quit)
+	}()
+
+	select {
+	case <-quit:
+	case <-time.After(forceExitWait):
+		if ttyState != nil {
+			_ = term.Restore(os.Stdin.Fd(), ttyState)
+		}
+	}
+
+	printed := make(chan struct{})
+	go func() {
+		fmt.Fprintln(os.Stderr, "killing...")
+		close(printed)
+	}()
+	select {
+	case <-printed:
+	case <-time.After(killingWait):
+	}
+	os.Exit(forceExitCode)
 }

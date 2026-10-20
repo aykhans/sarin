@@ -55,18 +55,22 @@ type BigInt struct {
 }
 
 func (b BigInt) MarshalJSON() ([]byte, error) {
-	return []byte(b.Int.String()), nil
+	return []byte(b.String()), nil
 }
 
 func (b BigInt) MarshalYAML() (any, error) {
 	return &yaml.Node{
 		Kind:  yaml.ScalarNode,
 		Tag:   "!!int",
-		Value: b.Int.String(),
+		Value: b.String(),
 	}, nil
 }
 
+// String renders nil as 0, as in an empty run's stats.
 func (b BigInt) String() string {
+	if b.Int == nil {
+		return "0"
+	}
 	return b.Int.String()
 }
 

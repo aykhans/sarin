@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"charm.land/lipgloss/v2"
 	"go.aykhans.me/sarin/internal/config"
@@ -17,19 +15,22 @@ import (
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	stopCtrl := sarin.NewStopController(cancel)
-	go listenForTermination(stopCtrl.Stop)
+	go stopCtrl.ListenSignals()
 
-	combinedConfig := config.ReadAllConfigs()
+	combinedConfig := config.ReadAllConfigs(ctx)
+	if ctx.Err() != nil {
+		return
+	}
 
 	combinedConfig.SetDefaults()
 
 	if *combinedConfig.ShowConfig {
-		if !combinedConfig.Print() {
+		if !combinedConfig.Print(ctx, stopCtrl) {
 			return
 		}
 	}
 
-	_ = utilsErr.MustHandle(combinedConfig.Validate(),
+	_ = utilsErr.MustHandle(combinedConfig.Validate(ctx),
 		utilsErr.OnType(func(err types.FieldValidationErrors) error {
 			for _, fieldErr := range err.Errors {
 				if fieldErr.Value == "" {
@@ -46,6 +47,9 @@ func main() {
 			return nil
 		}),
 	)
+	if ctx.Err() != nil {
+		return
+	}
 
 	srn, err := sarin.NewSarin(
 		ctx,
@@ -58,6 +62,9 @@ func main() {
 		*combinedConfig.DryRun, *combinedConfig.LogLevel, *combinedConfig.LogFile,
 		combinedConfig.Lua, combinedConfig.Js,
 	)
+	if ctx.Err() != nil {
+		return
+	}
 	_ = utilsErr.MustHandle(err,
 		utilsErr.OnType(func(err types.ProxyDialError) error {
 			fmt.Fprint(os.Stderr, lipgloss.Sprintln(config.StyleRed.Render("[PROXY] ")+err.Error()))
@@ -87,13 +94,5 @@ func main() {
 		srn.GetResponses().PrintYAML()
 	default:
 		srn.GetResponses().PrintTable()
-	}
-}
-
-func listenForTermination(stop func()) {
-	sigChan := make(chan os.Signal, 4)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	for range sigChan {
-		stop()
 	}
 }
