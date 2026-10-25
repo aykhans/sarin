@@ -193,7 +193,7 @@ Total number of requests to send. At least one of `requests` or `duration` must 
 
 ## Duration
 
-Test duration. At least one of `requests` or `duration` must be specified. If both are provided, the test stops when either limit is reached first.
+Test duration. Must be greater than 0. At least one of `requests` or `duration` must be specified. If both are provided, the test stops when either limit is reached first.
 
 Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
 
