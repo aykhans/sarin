@@ -2,10 +2,11 @@
 
 ## Sarin is a high-performance HTTP load testing tool built with Go and fasthttp.
 
-[![Go Reference](https://pkg.go.dev/badge/go.aykhans.me/sarin.svg)](https://pkg.go.dev/go.aykhans.me/sarin)
 [![Docker Pulls](https://img.shields.io/docker/pulls/aykhans/sarin)](https://hub.docker.com/r/aykhans/sarin)
 [![Downloads](https://img.shields.io/github/downloads/aykhans/sarin/total?cacheSeconds=3600)](https://github.com/aykhans/sarin/releases)
 [![Lint](https://img.shields.io/github/actions/workflow/status/aykhans/sarin/lint.yaml?branch=main&label=lint)](https://github.com/aykhans/sarin/actions/workflows/lint.yaml)
+[![Release](https://img.shields.io/github/actions/workflow/status/aykhans/sarin/release.yaml?label=release)](https://github.com/aykhans/sarin/actions/workflows/release.yaml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/aykhans/sarin)](go.mod)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
