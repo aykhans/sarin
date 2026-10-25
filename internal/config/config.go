@@ -458,12 +458,10 @@ func (config Config) Validate(ctx context.Context) error {
 	switch {
 	case config.Requests == nil && config.Duration == nil:
 		validationErrors = append(validationErrors, types.NewFieldValidationError("Requests / Duration", "", errors.New("either request count or duration must be specified")))
-	case (config.Requests != nil && config.Duration != nil) && (*config.Requests == 0 && *config.Duration == 0):
-		validationErrors = append(validationErrors, types.NewFieldValidationError("Requests / Duration", "0", errors.New("both request count and duration cannot be zero")))
+	case config.Duration != nil && *config.Duration <= 0:
+		validationErrors = append(validationErrors, types.NewFieldValidationError("Duration", config.Duration.String(), errors.New("duration must be greater than 0")))
 	case config.Requests != nil && config.Duration == nil && *config.Requests == 0:
 		validationErrors = append(validationErrors, types.NewFieldValidationError("Requests", "0", errors.New("request count must be greater than 0")))
-	case config.Requests == nil && config.Duration != nil && *config.Duration == 0:
-		validationErrors = append(validationErrors, types.NewFieldValidationError("Duration", "0", errors.New("duration must be greater than 0")))
 	}
 
 	if config.Timeout == nil || *config.Timeout < 1 {

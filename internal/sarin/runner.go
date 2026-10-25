@@ -200,8 +200,7 @@ type sarin struct {
 	logFile        string
 
 	// jobsCtx ends the run, either when the duration expires or on Ctrl+C.
-	jobsCtx    context.Context //nolint:containedctx
-	jobsCancel context.CancelFunc
+	jobsCtx context.Context //nolint:containedctx
 
 	hostClients       []*fasthttp.HostClient
 	scriptHTTPClients []*scriptHTTPClient
@@ -277,20 +276,16 @@ func NewSarin(
 
 	scriptChain := script.NewChain(luaSources, jsSources)
 
-	jobsCtx, jobsCancel := context.WithCancel(ctx)
-
 	var scriptHTTPClients []*scriptHTTPClient
 	if !scriptChain.IsEmpty() {
-		scriptHTTPClients, err = newScriptHTTPClients(jobsCtx, proxyURLs, workers, maxResponseBody)
+		scriptHTTPClients, err = newScriptHTTPClients(ctx, proxyURLs, workers, maxResponseBody)
 		if err != nil {
-			jobsCancel()
 			return nil, err
 		}
 	}
 
 	srn := &sarin{
-		jobsCtx:           jobsCtx,
-		jobsCancel:        jobsCancel,
+		jobsCtx:           ctx,
 		workers:           workers,
 		requestURL:        requestURL,
 		methods:           methods,
@@ -328,7 +323,6 @@ func (s sarin) GetResponses() *SarinResponseData {
 
 func (s sarin) Start(stopCtrl *StopController) {
 	var workersWG sync.WaitGroup
-	jobsCh := make(chan struct{}, max(s.workers, 1))
 
 	var counter atomic.Uint64
 
@@ -336,6 +330,7 @@ func (s sarin) Start(stopCtrl *StopController) {
 	if s.totalRequests != nil {
 		totalRequests = *s.totalRequests
 	}
+	jobs := newJobSource(s.jobsCtx, totalRequests)
 
 	// A background job would get SIGTTOU from the TUI, so it runs without one.
 	onTerminal := IsInteractiveTerminal(os.Stdout.Fd()) && isForeground(os.Stdout.Fd()) && isForeground(os.Stdin.Fd())
@@ -387,21 +382,19 @@ func (s sarin) Start(stopCtrl *StopController) {
 		sendLog, sendRespLog = s.newWriterLog(os.Stderr)
 	}
 
+	// The deadline is a graceful stop, so one Ctrl+C after it forces the exit.
+	if s.totalDuration != nil {
+		durationTimer := time.AfterFunc(*s.totalDuration, stopCtrl.stopGracefully)
+		defer durationTimer.Stop()
+	}
+
 	// Start workers
-	s.startWorkers(&workersWG, jobsCh, &counter, sendLog, sendRespLog)
+	s.startWorkers(&workersWG, jobs, &counter, sendLog, sendRespLog)
 
 	if runTUI {
 		go s.streamProgress(streamCtx, stopCtrl, streamCh, totalRequests, &counter, tuiLogChannel, showProgressBar)
 	}
 
-	// Setup duration-based cancellation
-	s.setupDurationTimeout()
-	// Distribute jobs to workers.
-	// This blocks until all jobs are sent or the context is canceled.
-	s.sendJobs(jobsCh)
-
-	// Close the jobs channel so workers stop after completing their current job
-	close(jobsCh)
 	// Wait until all workers stopped
 	workersWG.Wait()
 	if tuiLogChannel != nil {
@@ -455,40 +448,10 @@ func (s sarin) newChannelLog(ch chan<- runtimeLog) (runtimeLogger, respLogger) {
 	return sendLog, sendRespLog
 }
 
-func (s sarin) startWorkers(wg *sync.WaitGroup, jobs <-chan struct{}, counter *atomic.Uint64, sendLog runtimeLogger, sendRespLog respLogger) {
+func (s sarin) startWorkers(wg *sync.WaitGroup, jobs *jobSource, counter *atomic.Uint64, sendLog runtimeLogger, sendRespLog respLogger) {
 	for range max(s.workers, 1) {
 		wg.Go(func() {
 			s.Worker(jobs, counter, sendLog, sendRespLog)
 		})
-	}
-}
-
-func (s sarin) setupDurationTimeout() {
-	if s.totalDuration != nil {
-		go func() {
-			timer := time.NewTimer(*s.totalDuration)
-			defer timer.Stop()
-			select {
-			case <-timer.C:
-				s.jobsCancel()
-			case <-s.jobsCtx.Done():
-				// Context cancelled, cleanup
-			}
-		}()
-	}
-}
-
-func (s sarin) sendJobs(jobs chan<- struct{}) {
-	if s.totalRequests != nil && *s.totalRequests > 0 {
-		for range *s.totalRequests {
-			if s.jobsCtx.Err() != nil {
-				break
-			}
-			jobs <- struct{}{}
-		}
-	} else {
-		for s.jobsCtx.Err() == nil {
-			jobs <- struct{}{}
-		}
 	}
 }

@@ -8,11 +8,11 @@
 
 (buildGoModule.override { go = go_1_27; }) (finalAttrs: {
   pname = "sarin";
-  version = "1.5.0"; # bump per release
+  version = "1.5.1"; # bump per release
 
   src = lib.cleanSource ../.;
 
-  vendorHash = "sha256-aBwlFhNylVAI1iETa1vbNNiUBJVw+brU2+hrzpyhr+4=";
+  vendorHash = "sha256-6gpJMY1bE5txUYuH0iID9UV4NjAd5Zzrt+TGdgxXiVI=";
 
   subPackages = [ "cmd/cli" ];
 
