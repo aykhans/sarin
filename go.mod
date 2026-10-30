@@ -7,7 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.1.0
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
-	github.com/brianvoe/gofakeit/v7 v7.18.0
+	github.com/brianvoe/gofakeit/v7 v7.18.1
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dop251/goja v0.0.0-20261024144015-2a9269b6b6de
 	github.com/joho/godotenv v1.5.1
