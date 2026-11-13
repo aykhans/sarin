@@ -80,8 +80,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
-github.com/valyala/fasthttp v1.77.0 h1:6mxBJdHabRmU4Cmw79Uqhgvjzsp6pjOaQk2t8COflzo=
-github.com/valyala/fasthttp v1.77.0/go.mod h1:m8oTPC8riDDky07invpl+Gz3RixnAN5BbwyUuVB5H2o=
+github.com/valyala/fasthttp v1.78.0 h1:tKfLdx7cD8HZOTP1wc2OpbQMbgO1HP12J0y/XMdyW6Q=
+github.com/valyala/fasthttp v1.78.0/go.mod h1:8NXUY/ZXyjqEWN5cbfIdAAv+ES+5yfcl2EGNo872KzQ=
 github.com/xo/terminfo v1.3.1 h1:4ZwPCuu4PEFw0PkNp3Hv/x3gqvgLCzYhurszsj101cM=
 github.com/xo/terminfo v1.3.1/go.mod h1:lGzkSo8Fe7IRh/w+Gqz7n5mDog4FVXCj3gy/DYTBqio=
 github.com/yuin/goldmark v1.8.7 h1:XT/tNqCIbabh0ln675w4x3dv04kQBKi8NwYqi9IJaxI=
