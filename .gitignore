@@ -1,4 +1,5 @@
 bin/*
+.direnv/*
 
 # Nix build artifacts
 result
