@@ -8,7 +8,7 @@
 
 (buildGoModule.override { go = go_1_27; }) (finalAttrs: {
   pname = "sarin";
-  version = "1.5.1"; # bump per release
+  version = "1.5.2"; # bump per release
 
   src = lib.cleanSource ../.;
 
