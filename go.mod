@@ -4,12 +4,12 @@ go 1.27.3
 
 require (
 	charm.land/bubbles/v2 v2.2.2
-	charm.land/bubbletea/v2 v2.1.2
+	charm.land/bubbletea/v2 v2.1.3
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.1.1
 	github.com/brianvoe/gofakeit/v7 v7.18.1
 	github.com/charmbracelet/x/term v0.2.2
-	github.com/dop251/goja v0.0.0-20261122185237-35fdc4b88e39
+	github.com/dop251/goja v0.0.0-20261125210501-5e92a7e24d0c
 	github.com/joho/godotenv v1.5.1
 	github.com/valyala/fasthttp v1.80.0
 	github.com/yuin/gopher-lua v1.1.2
@@ -24,7 +24,7 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20261119151026-8ecbcf0e188c // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20261125122737-8ed499892fb4 // indirect
 	github.com/charmbracelet/x/ansi v0.11.10 // indirect
 	github.com/charmbracelet/x/exp/slice v0.1.0 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
